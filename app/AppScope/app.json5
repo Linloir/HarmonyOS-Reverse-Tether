@@ -1,0 +1,10 @@
+{
+  "app": {
+    "bundleName": "com.linloir.hrevtether",
+    "vendor": "linloir",
+    "versionCode": 3,
+    "versionName": "0.1.2",
+    "icon": "$media:app_icon",
+    "label": "$string:app_name"
+  }
+}

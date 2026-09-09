@@ -1,0 +1,13 @@
+Harmony Reverse Tether
+Copyright 2026 linloir
+
+The relay packet-routing implementation in relay/src/relay, relay/src/lib.rs,
+and relay/src/logger.rs derives from Genymobile gnirehtet, licensed under the
+Apache License 2.0, Copyright (C) 2017 Genymobile.
+Upstream: https://github.com/Genymobile/gnirehtet
+This distribution includes changes to TCP lifecycle handling, metrics, packet
+validation and DNS forwarding. No Android client code is included.
+The original copyright headers and LICENSE are retained.
+
+The HarmonyOS client, native tunnel bridge, command-line tools and integration
+tests are new code in this repository.

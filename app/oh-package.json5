@@ -1,0 +1,8 @@
+{
+  "modelVersion": "5.0.0",
+  "name": "harmony-reverse-tether",
+  "version": "0.1.0",
+  "description": "USB reverse tethering for HarmonyOS",
+  "license": "Apache-2.0",
+  "dependencies": {}
+}

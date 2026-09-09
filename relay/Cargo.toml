@@ -1,0 +1,22 @@
+[package]
+name = "harmony-relay"
+version = "0.1.0"
+edition = "2018"
+license = "Apache-2.0"
+description = "Loopback-only IPv4 TCP/UDP relay for HarmonyOS reverse tethering over HDC"
+authors = ["linloir"]
+
+[lib]
+name = "relaylib"
+path = "src/lib.rs"
+
+[dependencies]
+mio = "0.6"
+slab = "0.4"
+log = "0.4"
+chrono = "0.4"
+byteorder = "1.3"
+rand = "0.7"
+
+[profile.release]
+lto = true

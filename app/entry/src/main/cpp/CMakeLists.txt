@@ -1,0 +1,7 @@
+cmake_minimum_required(VERSION 3.16)
+project(tether)
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+add_library(tether SHARED napi_init.cpp tunnel.cpp)
+target_compile_options(tether PRIVATE -Wall -Wextra -Werror -Wno-unused-command-line-argument)
+target_link_libraries(tether PUBLIC libace_napi.z.so)
