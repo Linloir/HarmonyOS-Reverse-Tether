@@ -27,7 +27,7 @@ python3 scripts/network-probe.py --serial YOUR_DEVICE_SERIAL \
 
 底层调用为 `hdc -t SERIAL shell aa start -b com.linloir.hrevtether -a ProbeAbility --ps request 'JSON'`。JSON 应作为一个经过正确 shell 引号处理的参数发送；每次调用生成新的随机 UUID。
 
-设备只在 `127.0.0.1:31418` 上提供结果。使用 `hdc fport tcp:LOCAL_PORT tcp:31418` 后，读取 `GET /v1/probe/REQUEST_ID`：处理中返回 HTTP 202，完成返回 HTTP 200；未知或过期 ID 返回 HTTP 404。结果读取需要与启动时相同的请求 ID，不应将该 ID 发布或记录到共享日志。
+App 0.1.3 起，设备只在 `127.0.0.1:41418` 上提供结果。使用 `hdc fport tcp:LOCAL_PORT tcp:41418` 后，读取 `GET /v1/probe/REQUEST_ID`：处理中返回 HTTP 202，完成返回 HTTP 200；未知或过期 ID 返回 HTTP 404。0.1.2 使用 `31418`，配套脚本会根据已安装应用的 `versionCode` 自动选择。结果读取需要与启动时相同的请求 ID，不应将该 ID 发布或记录到共享日志。
 
 HDC 的 `-e` 选项可能将电脑端转发绑定到指定网卡地址；此时脚本使用 `--forward-host ADDRESS` 指定该地址。`--hdc`、`--hdc-server` 和 `--bundle` 分别指定 HDC 可执行文件、已有 HDC server 和派生 App 包名。该脚本需要 Python 3，不依赖电脑端 relay。
 

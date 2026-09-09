@@ -15,9 +15,13 @@ export default class EntryAbility extends UIAbility {
     const vpnWant: Want = {bundleName: this.context.abilityInfo.bundleName, abilityName: VPN_ABILITY};
     if (command === 'start') {
       const dns = want.parameters?.dns;
+      const parameters: Record<string, string> = {};
       if (typeof dns === 'string' && dns.length > 0) {
-        vpnWant.parameters = {dns: dns};
+        parameters['dns'] = dns;
       }
+      const port = want.parameters?.port;
+      if (typeof port === 'string' || typeof port === 'number') parameters['port'] = String(port);
+      vpnWant.parameters = parameters;
       vpnExtension.startVpnExtensionAbility(vpnWant).catch((error: Error) => {
         hilog.error(0x0001, 'HarmonyTether', 'START_REQUEST_FAILED %{public}s', error.message);
       });

@@ -15,7 +15,7 @@ import sys
 import time
 
 DEFAULT_BUNDLE = "com.linloir.hrevtether"
-DEVICE_PORT = 31417
+DEVICE_PORT = 41417
 
 
 class Hdc:
@@ -25,6 +25,7 @@ class Hdc:
             self.prefix += ["-s", args.hdc_server]
         self.prefix += ["-t", args.serial]
         self.bundle = args.bundle
+        self.device_port = args.device_port
 
     def run(self, *command):
         result = subprocess.run(self.prefix + list(command), capture_output=True, text=True, timeout=20)
@@ -45,20 +46,21 @@ class Hdc:
         return self.run("fport", "ls")
 
     def reverse(self, serial, port):
-        rule = f"tcp:{DEVICE_PORT} tcp:{port}"
+        rule = f"tcp:{self.device_port} tcp:{port}"
         for line in self.rules().splitlines():
             fields = line.split()
-            if len(fields) >= 4 and fields[0] == serial and fields[1] == f"tcp:{DEVICE_PORT}" and fields[-1] == "[Reverse]":
+            if len(fields) >= 4 and fields[0] == serial and fields[1] == f"tcp:{self.device_port}" and fields[-1] == "[Reverse]":
                 if fields[2] != f"tcp:{port}":
-                    raise RuntimeError(f"Device port {DEVICE_PORT} already forwards to {fields[2]}")
+                    raise RuntimeError(f"Device port {self.device_port} already forwards to {fields[2]}")
                 return False
-        self.run("rport", f"tcp:{DEVICE_PORT}", f"tcp:{port}")
+        self.run("rport", f"tcp:{self.device_port}", f"tcp:{port}")
         if not any(rule in line and serial in line and "[Reverse]" in line for line in self.rules().splitlines()):
             raise RuntimeError("HDC did not retain the reverse rule")
         return True
 
     def control(self, command):
-        return self.shell("aa", "start", "-b", self.bundle, "-a", "EntryAbility", "--ps", "command", command)
+        parameters = ["--ps", "port", str(self.device_port)] if command == "start" else []
+        return self.shell("aa", "start", "-b", self.bundle, "-a", "EntryAbility", "--ps", "command", command, *parameters)
 
 
 def emit(event, **values):
@@ -84,11 +86,13 @@ def main():
     parser.add_argument("--bundle", default=os.environ.get("HARMONY_BUNDLE_NAME", DEFAULT_BUNDLE), help="Application bundle name; must match the installed HAP")
     parser.add_argument("--relay", type=Path, default=default_relay(), help="Relay executable; also configurable with HARMONY_RELAY")
     parser.add_argument("--relay-port", type=int, default=31417)
+    parser.add_argument("--device-port", type=int, default=DEVICE_PORT,
+                        help="Device loopback port; requires App 0.1.3 or newer for custom ports")
     parser.add_argument("--dns", help="Override the computer's IPv4 resolver; default is /etc/resolv.conf")
     parser.add_argument("--hap", type=Path, help="Device-authorized signed HAP for install")
     parser.add_argument("--state-dir", type=Path, default=Path.home() / ".local/state/harmony-reverse-tether")
     args = parser.parse_args()
-    if not re.fullmatch(r"[A-Za-z0-9_-]+", args.serial) or not 1 <= args.relay_port <= 65535:
+    if not re.fullmatch(r"[A-Za-z0-9_-]+", args.serial) or not 1 <= args.relay_port <= 65535 or not 1024 <= args.device_port <= 65535:
         parser.error("Invalid USB serial or relay port")
     if not re.fullmatch(r"[A-Za-z][A-Za-z0-9_]*(?:\.[A-Za-z][A-Za-z0-9_]*)+", args.bundle):
         parser.error("Invalid application bundle name")
@@ -187,7 +191,7 @@ def main():
                 emit("vpn_stop_unconfirmed", detail=str(error))
         if owned_rule:
             try:
-                hdc.run("fport", "rm", f"tcp:{DEVICE_PORT}", f"tcp:{args.relay_port}")
+                hdc.run("fport", "rm", f"tcp:{args.device_port}", f"tcp:{args.relay_port}")
             except Exception as error:
                 emit("forward_cleanup_unconfirmed", detail=str(error))
         if relay and relay.poll() is None:

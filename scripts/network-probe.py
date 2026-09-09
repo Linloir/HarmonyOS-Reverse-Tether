@@ -88,7 +88,14 @@ def main():
             break
     else:
         raise RuntimeError('Could not allocate a free forwarding port')
-    remote = 'tcp:31418'
+    metadata = run('shell', f'bm dump -n {args.bundle}')
+    try:
+        bundle = json.loads(metadata[metadata.index('{'):])
+        if bundle.get('name') != args.bundle or type(bundle.get('versionCode')) is not int:
+            raise ValueError('Invalid app identity or version')
+    except (ValueError, KeyError) as error:
+        raise RuntimeError('A compatible network probe App must be installed') from error
+    remote = 'tcp:41418' if bundle['versionCode'] >= 4 else 'tcp:31418'
     try:
         if 'Forwardport result:OK' not in run('fport', local, remote):
             raise RuntimeError('HDC did not confirm forwarding')

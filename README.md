@@ -76,6 +76,7 @@ HDC=/path/to/hdc python3 scripts/harmony-tether.py run --serial "$SERIAL"
 | `--hdc-server` | 显式指定 HDC server；省略时沿用 HDC 自身的配置 |
 | `--relay` / `HARMONY_RELAY` | 转发服务的可执行文件路径 |
 | `--relay-port` | 电脑端服务端口，默认 `31417` |
+| `--device-port` | 手机端回环端口，默认 `41417`；自定义端口需要 App 0.1.3 或更新版本 |
 | `--dns` | 指定电脑可访问的 IPv4 DNS；Linux 默认读取 `/etc/resolv.conf`，Windows relay 默认读取系统 DNS |
 | `--bundle` / `HARMONY_BUNDLE_NAME` | App 包名，默认 `com.linloir.hrevtether` |
 | `--state-dir` | 本地运行状态与进程锁目录 |
@@ -95,17 +96,19 @@ HDC=/path/to/hdc python3 scripts/harmony-tether.py run --serial "$SERIAL"
 Windows 在 PowerShell 中进入解压目录，执行 `./harmony-relay.exe --port 31417`。保持服务运行，在另一个终端执行以下 HDC 命令，将 `SERIAL` 替换成 `hdc list targets` 显示的设备连接标识：
 
 ```text
-hdc -t SERIAL rport tcp:31417 tcp:31417
+hdc -t SERIAL rport tcp:41417 tcp:31417
 hdc -t SERIAL shell aa start -b com.linloir.hrevtether -a EntryAbility
 ```
 
-在 App 中点击“连接”并允许系统 VPN 请求。结束时在 App 中断开，执行 `hdc -t SERIAL fport rm tcp:31417 tcp:31417`，然后关闭服务终端。HDC 与已签名 App 需另行准备，服务压缩包不包含 HDC。
+在 App 中点击“连接”并允许系统 VPN 请求。结束时在 App 中断开，执行 `hdc -t SERIAL fport rm tcp:41417 tcp:31417`，然后关闭服务终端。HDC 与已签名 App 需另行准备，服务压缩包不包含 HDC。
+
+App 0.1.3 起，手机端默认端口为 `41417`，电脑端仍为 `31417`。旧版 App 的手机端端口为 `31417`。某些系统版本无法监听部分端口；需要更换手机端端口时，使用 `--device-port`，或在启动 `EntryAbility` 时传入 `--ps port PORT`，并建立对应的反向转发。App 会记住最近使用的手机端端口，供界面重新连接时使用。
 
 在另一个终端中建立转发并启动 App：
 
 ```bash
 export BUNDLE="com.linloir.hrevtether"
-hdc -t "$SERIAL" rport tcp:31417 tcp:31417
+hdc -t "$SERIAL" rport tcp:41417 tcp:31417
 hdc -t "$SERIAL" shell aa start -b "$BUNDLE" -a EntryAbility
 hdc -t "$SERIAL" shell aa start -b "$BUNDLE" -a EntryAbility --ps command start
 ```
@@ -114,7 +117,7 @@ hdc -t "$SERIAL" shell aa start -b "$BUNDLE" -a EntryAbility --ps command start
 
 ```bash
 hdc -t "$SERIAL" shell aa start -b "$BUNDLE" -a EntryAbility --ps command stop
-hdc -t "$SERIAL" fport rm tcp:31417 tcp:31417
+hdc -t "$SERIAL" fport rm tcp:41417 tcp:31417
 ```
 
 VPN 内部地址为 `10.0.0.2/32`，MTU 为 1500。默认虚拟 DNS `10.0.0.3` 由 relay 转发到电脑配置的 DNS；这些是协议内部地址。更换电脑的 DNS 后，重新启动 relay 以读取配置。

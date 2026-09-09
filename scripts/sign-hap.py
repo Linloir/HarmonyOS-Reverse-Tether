@@ -56,18 +56,38 @@ def run_tool(arguments: list[str], success_marker: str) -> None:
 with tempfile.TemporaryDirectory(prefix=".hap-sign-", dir=args.output.parent) as temporary:
     directory = Path(temporary)
     signed = directory / ('signed' + args.input.suffix)
-    run_tool(["sign-app", "-mode", "localSign",
-              "-keyAlias", config["alias"], "-keyPwd", password,
-              "-appCertFile", config["certificate"], "-profileFile", config["profile"],
-              "-inFile", str(args.input), "-signAlg", "SHA256withECDSA",
-              "-keystoreFile", config["keystore"], "-keystorePwd", password,
-              "-outFile", str(signed), "-compatibleVersion", str(compatible_version), "-signCode", "1"],
-             "sign-app success")
-    if not signed.is_file():
-        sys.exit("Signing tool did not create a package")
-    run_tool(["verify-app", "-inFile", str(signed),
-              "-outCertChain", str(directory / "certificate-chain.cer"),
-              "-outProfile", str(directory / "profile.p7b")], "verify-app success")
+
+    def sign_and_verify(source: Path, destination: Path) -> None:
+        run_tool(["sign-app", "-mode", "localSign",
+                  "-keyAlias", config["alias"], "-keyPwd", password,
+                  "-appCertFile", config["certificate"], "-profileFile", config["profile"],
+                  "-inFile", str(source), "-signAlg", "SHA256withECDSA",
+                  "-keystoreFile", config["keystore"], "-keystorePwd", password,
+                  "-outFile", str(destination), "-compatibleVersion", str(compatible_version), "-signCode", "1"],
+                 "sign-app success")
+        if not destination.is_file():
+            sys.exit("Signing tool did not create a package")
+        run_tool(["verify-app", "-inFile", str(destination),
+                  "-outCertChain", str(directory / "certificate-chain.cer"),
+                  "-outProfile", str(directory / "profile.p7b")], "verify-app success")
+        if (directory / "profile.p7b").read_bytes() != Path(config["profile"]).read_bytes():
+            sys.exit("Verified package profile does not match the supplied profile")
+
+    source = args.input
+    if args.input.suffix == '.app':
+        # Signing the outer ZIP does not sign its embedded HAP. Validate both
+        # layers before replacing an output intended for distribution.
+        module_source = directory / 'module-unsigned.hap'
+        module_signed = directory / 'module-signed.hap'
+        with zipfile.ZipFile(args.input) as package:
+            module_source.write_bytes(package.read(modules[0]))
+        sign_and_verify(module_source, module_signed)
+        source = directory / 'modules-signed.app'
+        with zipfile.ZipFile(args.input) as package, zipfile.ZipFile(source, 'w') as repacked:
+            for entry in package.infolist():
+                data = module_signed.read_bytes() if entry.filename == modules[0] else package.read(entry)
+                repacked.writestr(entry, data)
+    sign_and_verify(source, signed)
     signed.replace(args.output)
 
 print(f"Signed and locally verified package: {args.output}")

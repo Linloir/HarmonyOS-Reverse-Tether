@@ -1,7 +1,7 @@
 import { fileIo } from '@kit.CoreFileKit';
 
 export const VPN_ABILITY = 'TetherVpnAbility';
-export const PORT = 31417;
+export const PORT = 41417;
 
 export interface TunnelStats {
   state: string;
@@ -14,6 +14,7 @@ export interface TunnelStats {
 }
 
 export class TetherState {
+  port: number = PORT;
   state: string = 'stopped';
   message: string = '连接 USB 后，点击连接';
   updatedAt: number = 0;

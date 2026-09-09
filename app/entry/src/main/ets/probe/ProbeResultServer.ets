@@ -21,7 +21,7 @@ export class ProbeResultServer {
       this.server = socket.constructTCPSocketServerInstance();
       this.server.on('connect', (client: socket.TCPSocketConnection) => this.accept(client));
       this.server.on('error', () => {});
-      this.starting = this.server.listen({address: '127.0.0.1', family: 1, port: 31418});
+      this.starting = this.server.listen({address: '127.0.0.1', family: 1, port: 41418});
     }
     try { await this.starting; }
     catch (_) { this.starting = undefined; this.end(id); throw new Error('listener_failed'); }

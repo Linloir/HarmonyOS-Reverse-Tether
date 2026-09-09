@@ -3,7 +3,7 @@ import { hilog } from '@kit.PerformanceAnalysisKit';
 import { BusinessError } from '@kit.BasicServicesKit';
 import { Want } from '@kit.AbilityKit';
 import tether from 'libtether.so';
-import { PORT, TetherState, TunnelStats, saveState } from '../common/State';
+import { PORT, TetherState, TunnelStats, saveState, loadState } from '../common/State';
 
 export default class TetherVpnAbility extends VpnExtensionAbility {
   private connection?: vpnExtension.VpnConnection;
@@ -17,8 +17,24 @@ export default class TetherVpnAbility extends VpnExtensionAbility {
   private attempts: number = 0;
   private state: TetherState = new TetherState();
   private dnsAddress: string = '10.0.0.3';
+  private port: number = PORT;
 
   onCreate(want: Want): void {
+    const requestedPort = want.parameters?.port;
+    this.port = loadState(this.context.filesDir).port ?? PORT;
+    if (requestedPort !== undefined) {
+      if ((typeof requestedPort !== 'string' && typeof requestedPort !== 'number') ||
+          !/^\d{1,5}$/.test(String(requestedPort))) {
+        this.publish('error', '连接端口格式无效');
+        return;
+      }
+      this.port = Number(requestedPort);
+    }
+    if (!Number.isInteger(this.port) || this.port < 1024 || this.port > 65535) {
+      this.publish('error', '连接端口格式无效');
+      return;
+    }
+    this.state.port = this.port;
     const dns = want.parameters?.dns;
     if (typeof dns === 'string' && dns.length > 0) {
       const parts = dns.split('.');
@@ -60,7 +76,7 @@ export default class TetherVpnAbility extends VpnExtensionAbility {
       this.socketFd = tether.createSocket();
       await this.connection.protect(this.socketFd);
       if (this.stopped || generation !== this.generation) { await this.cleanup(); return; }
-      await tether.connect(this.socketFd, PORT);
+      await tether.connect(this.socketFd, this.port);
       if (this.stopped || generation !== this.generation) { await this.cleanup(); return; }
       const config: vpnExtension.VpnConfig = {
         addresses: [{address: {address: '10.0.0.2', family: 1}, prefixLength: 32}],
@@ -83,7 +99,7 @@ export default class TetherVpnAbility extends VpnExtensionAbility {
       tether.start(this.tunFd, this.socketFd, this.session);
       this.attempts = 0;
       this.publish('connected', '已连接 · 正在通过 USB 共享网络');
-      hilog.info(0x0001, 'HarmonyTether', 'VPN_READY port=%{public}d mtu=1500 dns=%{public}s', PORT, this.dnsAddress);
+      hilog.info(0x0001, 'HarmonyTether', 'VPN_READY port=%{public}d mtu=1500 dns=%{public}s', this.port, this.dnsAddress);
     } catch (error) {
       const err = error as BusinessError;
       hilog.error(0x0001, 'HarmonyTether', 'VPN_CONNECT_FAILED code=%{public}d message=%{public}s', err.code ?? 0, err.message ?? String(error));
