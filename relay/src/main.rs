@@ -17,7 +17,7 @@ fn main() {
         },
         "--dns" => dns = Some(args.next().and_then(|s| s.parse().ok()).unwrap_or_else(|| usage())),
         "--help" => {
-            println!("harmony-relay [--port PORT] [--dns IPV4]\nListens on 127.0.0.1 only; default port 31417.\nDNS defaults to /etc/resolv.conf; client uses virtual 10.0.0.3.");
+            println!("harmony-relay [--port PORT] [--dns IPV4]\nListens on 127.0.0.1 only; default port 31417.\nDNS defaults to the computer's IPv4 resolver; client uses virtual 10.0.0.3.");
             return;
         }
         _ => usage(),

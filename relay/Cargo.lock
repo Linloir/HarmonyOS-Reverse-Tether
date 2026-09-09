@@ -157,7 +157,7 @@ dependencies = [
 
 [[package]]
 name = "harmony-relay"
-version = "0.1.0"
+version = "0.1.2"
 dependencies = [
  "byteorder",
  "chrono",
@@ -165,6 +165,7 @@ dependencies = [
  "mio",
  "rand",
  "slab",
+ "winapi 0.3.9",
 ]
 
 [[package]]

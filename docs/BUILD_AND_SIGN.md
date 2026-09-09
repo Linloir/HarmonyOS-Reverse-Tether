@@ -15,6 +15,16 @@ export HARMONY_CLT_HOME=/path/to/command-line-tools
 
 默认输出为 `build/harmony-reverse-tether-unsigned.hap`。构建在临时目录中完成，不改写源码中的应用身份，也不复用其他包名的构建状态。
 
+发布时显式选择 release 模式，并同时生成用于应用市场的 App Pack：
+
+```bash
+./scripts/build-app.sh --mode release \
+  --output build/harmony-reverse-tether-release-unsigned.hap \
+  --app-output build/harmony-reverse-tether-release-unsigned.app
+```
+
+`--app-output` 使用 SDK 的 `assembleApp` 生成 `.app` 及其包信息。不能通过重命名 `.hap` 或更换签名把 debug 编译变成 release 编译。
+
 默认包名是 `com.linloir.hrevtether`，构建派生应用时应使用开发者注册并获签名 Profile 授权的包名：
 
 ```bash
@@ -40,6 +50,15 @@ rustup target add aarch64-unknown-linux-gnu
 ```
 
 交叉编译产物只写入对应的 target 目录。可通过 `CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER` 指定链接器。
+
+在 Linux 上交叉编译 Windows amd64 时，安装 MinGW-w64 链接器和 Rust target：
+
+```bash
+rustup target add x86_64-pc-windows-gnu
+./scripts/build-relay.sh x86_64-pc-windows-gnu
+```
+
+输出为 `build/x86_64-pc-windows-gnu/harmony-relay.exe`。默认链接器为 `x86_64-w64-mingw32-gcc`，可通过 `CARGO_TARGET_X86_64_PC_WINDOWS_GNU_LINKER` 覆盖。Windows DNS 使用系统 `GetNetworkParams`；也可用 `--dns` 显式指定。
 
 ## 应用签名
 
@@ -77,6 +96,21 @@ python3 scripts/sign-hap.py \
 ```
 
 脚本执行 `sign-app`、`verify-app` 和 native codesign 验证，成功后原子替换输出 HAP，并打印 SHA-256。本地验签通过后，仍需在目标设备上验证安装和运行。
+
+对于发布包，配置中的密钥、证书链和 Profile 应全部使用匹配的发布材料。分别签名 release HAP 和 `assembleApp` 生成的 App Pack：
+
+```bash
+python3 scripts/sign-hap.py --config /path/to/release-signing.local.json \
+  --tool "$HARMONY_CLT_HOME/sdk/default/openharmony/toolchains/lib/hap-sign-tool.jar" \
+  --input build/harmony-reverse-tether-release-unsigned.hap \
+  --output build/harmony-reverse-tether-release.hap
+python3 scripts/sign-hap.py --config /path/to/release-signing.local.json \
+  --tool "$HARMONY_CLT_HOME/sdk/default/openharmony/toolchains/lib/hap-sign-tool.jar" \
+  --input build/harmony-reverse-tether-release-unsigned.app \
+  --output build/harmony-reverse-tether-release.app
+```
+
+`.app` 按 SDK 的标准流程签名整个分发容器，其中 HAP 的签名形态与独立签名的安装包不同；不要手工将已签名 HAP 填入 App Pack 后假定其签名会被打包工具保留。向应用市场提交 `.app`，独立安装和其他分发场景使用适合该渠道的 HAP。
 
 如需生成新的密钥和 CSR：
 

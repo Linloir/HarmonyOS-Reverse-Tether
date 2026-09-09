@@ -20,6 +20,14 @@ cargo test --locked --manifest-path relay/Cargo.toml
 python3 -m unittest discover -s tests -p 'test_*.py'
 ```
 
+STUN 数据包及测量结果的边界验证，使用 HarmonyOS SDK 自带的 ArkTS 编译器：
+
+```bash
+HARMONY_CLT_HOME=/path/to/command-line-tools node scripts/test-probe.cjs
+```
+
+独立探测还应在真机分别验证 VPN 开启、关闭、App 冷启动、无回复目标、DNS 错误以及请求结束后的转发清理。关闭 VPN 时确认探测前后均不存在 VPN 接口；开启 VPN 时确认数据包实际经过设备接口及电脑转发服务。不要将 HDC 请求成功等同于互联网请求成功。
+
 ## 转发与 USB 通道
 
 `tests/packet_probe.cpp` 和 `tests/relay_integration.py` 可以检查握手、异常客户端隔离、DNS 和 HTTP。先编译探测程序并运行 relay：

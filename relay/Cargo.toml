@@ -1,6 +1,6 @@
 [package]
 name = "harmony-relay"
-version = "0.1.0"
+version = "0.1.2"
 edition = "2018"
 license = "Apache-2.0"
 description = "Loopback-only IPv4 TCP/UDP relay for HarmonyOS reverse tethering over HDC"
@@ -17,6 +17,9 @@ log = "0.4"
 chrono = "0.4"
 byteorder = "1.3"
 rand = "0.7"
+
+[target.'cfg(windows)'.dependencies]
+winapi = { version = "0.3", features = ["iphlpapi", "iptypes", "winerror"] }
 
 [profile.release]
 lto = true

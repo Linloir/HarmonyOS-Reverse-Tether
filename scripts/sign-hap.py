@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
-"""Sign a built HAP using an existing device-authorized Huawei debug profile."""
+"""Sign and verify a HAP or single-module App Pack using a matching Huawei profile."""
 import argparse
 import hashlib
+import io
 import json
 from pathlib import Path
 import subprocess
@@ -20,14 +21,23 @@ for name in ("keystore", "passwordFile", "certificate", "profile"):
     if not Path(config[name]).is_file():
         parser.error(f"Missing signing {name}: {config[name]}")
 if not args.tool.is_file() or not args.input.is_file():
-    parser.error("Signing tool or input HAP does not exist")
+    parser.error("Signing tool or input package does not exist")
+if args.input.suffix not in ('.hap', '.app') or args.output.suffix != args.input.suffix:
+    parser.error('Use matching .hap or .app input and output extensions')
 if args.output.resolve() == args.input.resolve():
     parser.error("Input and output must be different files")
 password = Path(config["passwordFile"]).read_text().strip()
 if not password:
     parser.error("Signing password file is empty")
-with zipfile.ZipFile(args.input) as hap:
-    metadata = json.loads(hap.read("module.json"))
+with zipfile.ZipFile(args.input) as package:
+    if args.input.suffix == '.app':
+        modules = [name for name in package.namelist() if name.endswith('.hap')]
+        if len(modules) != 1:
+            parser.error('This signer supports App Packs with exactly one HAP')
+        with zipfile.ZipFile(io.BytesIO(package.read(modules[0]))) as hap:
+            metadata = json.loads(hap.read('module.json'))
+    else:
+        metadata = json.loads(package.read('module.json'))
 compatible_version = int(metadata["app"]["minAPIVersion"])
 args.output.parent.mkdir(parents=True, exist_ok=True)
 
@@ -45,7 +55,7 @@ def run_tool(arguments: list[str], success_marker: str) -> None:
 # Keep any existing output intact until both signing and verification succeed.
 with tempfile.TemporaryDirectory(prefix=".hap-sign-", dir=args.output.parent) as temporary:
     directory = Path(temporary)
-    signed = directory / "signed.hap"
+    signed = directory / ('signed' + args.input.suffix)
     run_tool(["sign-app", "-mode", "localSign",
               "-keyAlias", config["alias"], "-keyPwd", password,
               "-appCertFile", config["certificate"], "-profileFile", config["profile"],
@@ -54,12 +64,12 @@ with tempfile.TemporaryDirectory(prefix=".hap-sign-", dir=args.output.parent) as
               "-outFile", str(signed), "-compatibleVersion", str(compatible_version), "-signCode", "1"],
              "sign-app success")
     if not signed.is_file():
-        sys.exit("Signing tool did not create a HAP")
+        sys.exit("Signing tool did not create a package")
     run_tool(["verify-app", "-inFile", str(signed),
               "-outCertChain", str(directory / "certificate-chain.cer"),
               "-outProfile", str(directory / "profile.p7b")], "verify-app success")
     signed.replace(args.output)
 
-print(f"Signed and locally verified HAP: {args.output}")
+print(f"Signed and locally verified package: {args.output}")
 print(f"SHA-256: {hashlib.sha256(args.output.read_bytes()).hexdigest()}")
 print("Device installation must separately verify that the signing chain is trusted.")
