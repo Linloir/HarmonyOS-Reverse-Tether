@@ -4,6 +4,7 @@ import { BusinessError } from '@kit.BasicServicesKit';
 import { Want } from '@kit.AbilityKit';
 import tether from 'libtether.so';
 import { PORT, TetherState, TunnelStats, saveState, loadState } from '../common/State';
+import { hasPrivacyConsent } from '../common/PrivacyConsent';
 
 export default class TetherVpnAbility extends VpnExtensionAbility {
   private connection?: vpnExtension.VpnConnection;
@@ -20,6 +21,10 @@ export default class TetherVpnAbility extends VpnExtensionAbility {
   private port: number = PORT;
 
   onCreate(want: Want): void {
+    if (!hasPrivacyConsent(this.context.filesDir)) {
+      hilog.info(0x0001, 'HarmonyTether', 'PRIVACY_REQUIRED VPN was not started');
+      return;
+    }
     const requestedPort = want.parameters?.port;
     this.port = loadState(this.context.filesDir).port ?? PORT;
     if (requestedPort !== undefined) {

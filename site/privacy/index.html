@@ -1,8 +1,8 @@
 <!doctype html>
-<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="color-scheme" content="light"><title>USB 网络隐私政策 · linloir</title><meta name="description" content="USB 网络的数据处理、隐私权利和联系方式。"><style>body{margin:0;background:#f4f7f6;color:#243d36;font:16px/1.85 system-ui,-apple-system,"Segoe UI",sans-serif}main{max-width:800px;margin:0 auto;padding:48px 24px 72px}h1{font-size:32px;color:#176b5b;line-height:1.4}h2{font-size:22px;margin:36px 0 12px;scroll-margin-top:24px}p{overflow-wrap:anywhere}a{color:#176b5b;text-underline-offset:3px}nav{margin-bottom:28px}footer{border-top:1px solid #d5e0db;margin-top:40px;padding-top:20px;font-size:14px}</style></head><body><main><nav><a href="../">USB 网络</a></nav>
-<h1>USB 网络隐私政策</h1>
-<p>更新日期：2026 年 9 月 9 日　生效日期：2026 年 9 月 9 日</p>
-<p>本政策适用于 linloir 开发的「USB 网络」（Harmony Reverse Tether，包名 com.linloir.hrevtether）及本项目配套的电脑端转发服务和控制工具。隐私联系邮箱：3145078758@qq.com。</p>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="color-scheme" content="light"><title>RevTether隐私政策 · linloir</title><meta name="description" content="RevTether的数据处理、隐私权利和联系方式。"><style>body{margin:0;background:#f1f3f5;color:#182431;font:16px/1.85 system-ui,-apple-system,"Segoe UI",sans-serif}main{max-width:800px;margin:0 auto;padding:48px 24px 72px}h1{font-size:32px;color:#0a59f7;line-height:1.4}h2{font-size:22px;margin:36px 0 12px;scroll-margin-top:24px}p{overflow-wrap:anywhere}a{color:#0a59f7;text-underline-offset:3px}nav{margin-bottom:28px}footer{border-top:1px solid #d9dde3;margin-top:40px;padding-top:20px;font-size:14px}</style></head><body><main><nav><a href="../">RevTether</a></nav>
+<h1>RevTether隐私政策</h1>
+<p>更新日期：2026 年 9 月 10 日　生效日期：2026 年 9 月 10 日</p>
+<p>本政策适用于 linloir 开发的「RevTether」（Harmony Reverse Tether，包名 com.linloir.hrevtether）及本项目配套的电脑端转发服务和控制工具。隐私联系邮箱：3145078758@qq.com。</p>
 <p>本应用通过 USB 让 HarmonyOS 设备使用所连接电脑的网络。请在使用前阅读本政策，了解网络数据如何在设备和电脑之间处理，以及你可以如何控制这些处理。</p>
 <h2 id="section-1">1. 我们处理哪些信息</h2>
 <p>本应用不需要注册账户，不包含广告、用户画像或行为统计服务，不主动读取通讯录、照片、短信、麦克风、摄像头、精确位置、广告标识符或硬件唯一标识符。我们不运营接收用户上网流量的远程 VPN 服务器，也不会将你的上网流量上传给开发者。</p>
@@ -16,6 +16,8 @@
 <p>STUN 请求包含随机事务标识，不携带账户、通讯录、应用流量内容或硬件标识。服务器运营者会接触到网络出口 IP、端口、请求时间及事务标识；服务器由调用方指定，可能由调用方、开发者或其他第三方提供。请信任调用工具及其选择的服务器。结果包括请求标识、目标服务器、收发数量、往返时间、丢包率及必要错误信息，通过本地结果接口返回给持有该请求标识的调用方。结果短暂保存在内存中，正常返回或请求结束后释放，不写入应用文件；系统可能保留不含数据包内容的完成或错误日志。调用方可能自行保存结果，其保存方式和期限由调用方决定。</p>
 <p>隐私咨询：如果你通过邮箱联系我们，我们会处理你的邮箱地址、邮件内容以及你自愿提供的附件，用于答复和处理请求。请勿发送私钥、密码、完整网络流量或与请求无关的敏感信息。收发邮件服务提供商也会为传递和存储邮件处理相应信息。</p>
 <h2 id="section-2">2. 权限与使用选择</h2>
+<p>首次打开应用会显著提示阅读本政策，全文内置在应用中，无需联网或连接电脑即可阅读；此后可随时从“关于 → 隐私政策”再次查看。你可以选择“暂不同意”，继续浏览连接指南、故障排查、原理、使用场景与项目信息；在你同意之前，应用不会启动 VPN 供网、手动联网检查或外部工具请求的网络质量探测。同意政策不会自动开始连接，使用供网仍需点击“连接”或再次由已授权电脑发起。</p>
+<p>隐私选择：同意后，应用在本地保存政策版本与同意时间，用于记住你的选择；不会将该记录发送给开发者。清除应用数据或卸载可删除此记录并撤回本地选择，同时停止使用本应用功能。下次打开需重新选择；政策版本更新后，也需在使用网络功能前重新阅读并同意。</p>
 <p>网络访问权限（ohos.permission.INTERNET）用于连接本地转发服务、手动联网检查及按请求进行 STUN 探测；网络信息权限（ohos.permission.GET_NETWORK_INFO）用于使用网络、域名解析和 VPN 相关系统能力。应用不通过这些权限构建用户画像。</p>
 <p>系统 VPN 授权用于建立虚拟网络接口，并将进入该接口的流量经 USB 转发。首次使用需要你在系统提示中允许；你可以拒绝授权，但无法使用网络共享功能。授权和 VPN 连接状态由 HarmonyOS 管理。</p>
 <p>USB 调试及 HDC 授权由设备系统管理，用于与电脑建立 USB 通道。请仅授权你信任的电脑；使用完成后可在系统设置中撤销调试授权。</p>
@@ -23,6 +25,7 @@
 <p>网络路径通常为：设备应用 → 系统 VPN → USB/HDC → 你连接的电脑 → DNS 服务及目标网站或应用服务器。电脑的网络出口会成为相应请求的出口。目标服务和你选择的 DNS 服务会依其自身规则处理请求，相关行为不由本项目控制。</p>
 <p>本项目不出售个人信息，也不向广告或分析服务共享网络活动。开发者不会通过本应用集中收集或保存你的上网流量。你主动联系开发者时，开发者会接收相应的联系信息；如果调用方选择开发者提供的 STUN 服务器，其运营者还会接收上述探测所需的网络请求信息。如依法必须响应有权机关的要求，仅在必要范围内处理开发者实际持有的信息。</p>
 <p>本政策网页托管于 GitHub Pages。页面本身不设置 Cookie，不包含统计脚本、外部字体或广告；GitHub 为提供网站服务可能处理访问 IP、浏览器及请求日志，具体见 <a href="https://docs.github.com/en/site-policy/privacy-policies/github-general-privacy-statement">GitHub 隐私声明</a>。访问政策网页不需要开启 VPN 功能。</p>
+<p>应用内的指南、原理图、使用场景、项目介绍及隐私全文均为离线内容，不会因打开页面而自动访问外部网站。只有主动点击 GitHub 主页、源代码、下载、问题反馈或政策网页等外部链接时，应用才会请求系统打开浏览器；目标网站会按其规则处理出口 IP、浏览器和请求日志等信息。你可以不打开这些链接；内置内容仍可阅读。</p>
 <p>应用不会另行将流量集中传输到开发者指定的境外服务器。你访问的网站、选择的 DNS、政策托管及邮件服务可能位于不同国家或地区，相关网络请求和处理位置取决于这些服务，不能理解为所有数据均仅在中国境内处理。</p>
 <h2 id="section-4">4. 保存期限与安全</h2>
 <p>网络转发使用运行中的内存缓冲区，连接结束或进程退出后相应资源会释放；默认不将数据包内容写入文件。应用本地状态文件会随状态变化覆盖，断开连接不等同于删除该文件，可通过清除应用数据或卸载删除。</p>
@@ -33,7 +36,7 @@
 <p>你可以随时在应用中断开连接，停止电脑端服务，或在系统中撤销 VPN 和 USB 调试授权。停止 VPN 后，后续网络是否继续使用其他连接由系统及其他应用决定。</p>
 <p>网络质量探测独立于 VPN；仅断开 VPN 不会禁止外部工具再次请求探测。你可以停止调用工具的探测功能、撤销相应 USB 调试授权，或卸载应用来停止该入口的使用。单次探测会在完成或达到时限后结束。</p>
 <p>你可以清除应用数据或卸载应用，以删除本地状态；电脑运行状态及日志需在对应电脑上管理。应用不设账户，因此没有账户注销步骤。</p>
-<p>如需了解、访问、更正、复制或删除开发者实际持有的个人信息，撤回与联系信息有关的授权，或对本政策提出疑问和投诉，请发送邮件至 <a href="mailto:3145078758@qq.com">3145078758@qq.com</a>，注明“USB 网络隐私请求”。我们会在收到请求后 15 个工作日内回复，并在必要时以最少信息核实请求人身份；依法无法满足的，会说明原因。撤回不影响撤回前依法进行的处理。对于仅保存在你设备或电脑上的数据，开发者无法远程读取或代为删除，可向你说明本地操作方式。</p>
+<p>如需了解、访问、更正、复制或删除开发者实际持有的个人信息，撤回与联系信息有关的授权，或对本政策提出疑问和投诉，请发送邮件至 <a href="mailto:3145078758@qq.com">3145078758@qq.com</a>，注明“RevTether隐私请求”。我们会在收到请求后 15 个工作日内回复，并在必要时以最少信息核实请求人身份；依法无法满足的，会说明原因。撤回不影响撤回前依法进行的处理。对于仅保存在你设备或电脑上的数据，开发者无法远程读取或代为删除，可向你说明本地操作方式。</p>
 <h2 id="section-6">6. 未成年人</h2>
 <p>本应用不是专门面向儿童的产品。未成年人应在监护人指导下阅读本政策并使用；不满十四周岁者应取得监护人同意。监护人如认为开发者通过联系邮件等方式不当持有未成年人的个人信息，可联系我们处理。</p>
 <h2 id="section-7">7. 政策更新</h2>

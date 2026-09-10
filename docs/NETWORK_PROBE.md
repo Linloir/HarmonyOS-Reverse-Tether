@@ -4,7 +4,7 @@
 
 ## 调用
 
-设备安装支持 `ProbeAbility` 的 App，并授权 HDC 后，可以使用配套脚本：
+设备安装支持 `ProbeAbility` 的 App，并授权 HDC 后，可以使用配套脚本。0.1.4 起，设备使用者还需先打开 RevTether 并同意当前隐私政策；未同意时不会启动探测或本地结果服务，调用方无法取得探测结果，需先在手机上完成隐私选择。清除数据或政策版本更新后也需重新选择。
 
 ```bash
 python3 scripts/network-probe.py --serial YOUR_DEVICE_SERIAL \

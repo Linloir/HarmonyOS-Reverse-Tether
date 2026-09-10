@@ -1,4 +1,4 @@
-# Harmony Reverse Tether
+# RevTether · Harmony Reverse Tether
 
 通过 USB 让 HarmonyOS 设备使用所连接电脑的互联网连接。
 
@@ -8,7 +8,7 @@
 
 ## 组成
 
-- **App**：通过系统 VPN 接口共享网络，显示连接状态和流量，并提供可手动触发的 HTTPS 检查。
+- **App**：主页提供 VPN 连接控制、状态、流量与手动 HTTPS 检查；关于页提供离线连接指南、故障排查、反向供网原理图、使用场景、同类工具介绍、下载和开发者入口，以及可重复阅读的完整隐私政策。
 - **harmony-relay**：在电脑上转发 TCP/UDP 流量，默认只监听本机回环地址。
 - **harmony-tether.py**：通过 HDC 安装 App、建立 USB 转发、启动和停止连接。
 
@@ -21,7 +21,7 @@
 - 支持 `VpnExtensionAbility` 的 HarmonyOS 设备；App 最低兼容 API 12。
 - 已开启并授权 USB 调试，`hdc list targets` 能列出设备。
 - 电脑安装 HDC，并可正常联网；使用配套 Python 工具时还需 Python 3。
-- 设备上安装与其兼容、签名有效的 HAP。首次启动需要确认系统 VPN 授权。
+- 设备上安装与其兼容、签名有效的 HAP。首次启动需阅读隐私政策并作出选择，首次连接还需确认系统 VPN 授权。
 
 服务程序和客户端源码均包含在本仓库中。构建与签名步骤见 [BUILD_AND_SIGN.md](docs/BUILD_AND_SIGN.md)。
 
@@ -52,7 +52,9 @@ python3 scripts/harmony-tether.py install --serial "$SERIAL" \
 python3 scripts/harmony-tether.py run --serial "$SERIAL"
 ```
 
-在设备上允许 VPN 连接。`run` 会保持运行；按 `Ctrl+C` 停止连接并清理该实例创建的转发。USB 连接恢复后，工具会重新建立转发，App 会自动重试连接。
+首次使用先在设备上打开 RevTether，阅读并同意隐私政策。电脑发来的启动请求同样受隐私检查约束；同意政策后，请在主页点击“连接”或从电脑重新启动，再允许系统 VPN 请求。选择“暂不同意”仍可阅读内置指南和关于内容。
+
+`run` 会保持运行；按 `Ctrl+C` 停止连接并清理该实例创建的转发。USB 连接恢复后，工具会重新建立转发，App 会自动重试连接。
 
 检查设备连接信息或单独请求 App 断开：
 
@@ -127,6 +129,8 @@ VPN 内部地址为 `10.0.0.2/32`，MTU 为 1500。默认虚拟 DNS `10.0.0.3` �
 [测试说明](docs/TESTING.md)包含单元测试、USB 通道检查、实际应用联网和连接恢复的验证方法。[发布说明](docs/BUILD_AND_SIGN.md#发布源码)介绍源码打包和应用身份配置。
 
 独立的[网络质量探测接口](docs/NETWORK_PROBE.md)支持由调用方提供 STUN 服务器列表，返回设备当前网络的 RTT、丢包率及各目标结果。该功能不在主界面显示，调用时不需要启用 VPN。
+
+0.1.4 起，VPN、手动联网检查和外部网络探测都要求设备使用者已同意当前版本隐私政策；旧版本没有同意记录，升级后也需先在手机上完成选择。未同意时不会启动这些网络功能。内置政策与政策网页均从 `docs/PRIVACY.md` 生成，修改后运行 `python3 scripts/build-site.py`，并用 `--check` 验证同步。
 
 [隐私政策](https://linloir.github.io/HarmonyOS-Reverse-Tether/privacy/)说明网络转发、日志及诊断请求的数据处理方式；也可阅读[仓库中的政策文本](docs/PRIVACY.md)。
 

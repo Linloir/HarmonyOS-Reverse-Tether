@@ -2,6 +2,7 @@
 !/artifacts/.gitkeep
 /relay/target/
 /build/
+/assets/store/
 **/node_modules/
 **/oh_modules/
 **/.hvigor/

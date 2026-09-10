@@ -4,6 +4,7 @@ import { backgroundTaskManager } from '@kit.BackgroundTasksKit';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { ProbeRun, parseRequest } from './NetworkProbe';
 import { probeResultServer } from './ProbeResultServer';
+import { hasPrivacyConsent } from '../common/PrivacyConsent';
 
 // A short-lived, non-launcher ability. It never imports or starts VPN APIs.
 export default class ProbeAbility extends UIAbility {
@@ -22,6 +23,11 @@ export default class ProbeAbility extends UIAbility {
     this.context.moveAbilityToBackground().catch(() => {});
   }
   private async start(want: Want): Promise<void> {
+    if (!hasPrivacyConsent(this.context.filesDir)) {
+      hilog.info(0x0001, 'HarmonyProbe', 'PRIVACY_REQUIRED open the app and read the policy before probing');
+      this.finish();
+      return;
+    }
     try {
       const encoded = want.parameters?.request;
       if (typeof encoded !== 'string') throw new Error('invalid_request');
