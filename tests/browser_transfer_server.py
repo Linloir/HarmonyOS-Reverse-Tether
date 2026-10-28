@@ -4,6 +4,7 @@ import argparse
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
 import secrets
+import socket
 from urllib.parse import urlsplit
 
 parser = argparse.ArgumentParser(description=__doc__)
@@ -80,6 +81,11 @@ class Handler(BaseHTTPRequestHandler):
         self.reply(200 if verified else 400, json.dumps(result).encode())
 
 
-with ThreadingHTTPServer((args.bind, args.port), Handler) as server:
-    print(json.dumps({'event':'ready', 'url':f'http://{args.bind}:{args.port}/{token}/'}), flush=True)
+class TransferServer(ThreadingHTTPServer):
+    address_family = socket.AF_INET6 if ':' in args.bind else socket.AF_INET
+
+
+with TransferServer((args.bind, args.port), Handler) as server:
+    host = f'[{args.bind}]' if ':' in args.bind else args.bind
+    print(json.dumps({'event':'ready', 'url':f'http://{host}:{args.port}/{token}/'}), flush=True)
     server.serve_forever()

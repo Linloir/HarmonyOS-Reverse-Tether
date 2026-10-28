@@ -6,9 +6,10 @@ import { Privacy } from './Privacy';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { VPN_ABILITY, TetherState, loadState } from '../common/State';
 import { hasPrivacyConsent, acceptPrivacy } from '../common/PrivacyConsent';
-import { tetherParameters, clearTetherRequest } from '../common/TetherRequest';
+import { tetherParameters, clearTetherRequest, rememberTetherRequest } from '../common/TetherRequest';
 import { PrivacyDialog } from '../components/PrivacyDialog';
 import { AboutView } from '../components/AboutView';
+import { SettingsView } from '../components/SettingsView';
 
 interface TopicParams { topic: string; }
 
@@ -21,6 +22,7 @@ struct Index {
   @State acting: boolean = false;
   @State consent: boolean = false;
   @State selectedTab: number = 0;
+  @State addingApplications: boolean = false;
   private navigationStack: NavPathStack = new NavPathStack();
   private timer: number = -1;
   private promptOnShow: boolean = true;
@@ -94,11 +96,15 @@ struct Index {
     return this.consent;
   }
 
+  onPageHide(): void { this.addingApplications = false; }
+
   private async start(): Promise<void> {
     if (this.acting || !this.requireConsent()) return;
     this.acting = true;
     this.message = '首次连接时，请允许系统的 VPN 请求';
     try {
+      const context = this.getUIContext().getHostContext() as common.UIAbilityContext;
+      rememberTetherRequest(this.vpnWant(), context.filesDir);
       await vpnExtension.startVpnExtensionAbility(this.vpnWant());
     } catch (_) { this.message = '连接请求失败，请检查系统 VPN 授权后重试。'; }
     finally { this.acting = false; this.refresh(); }
@@ -119,6 +125,8 @@ struct Index {
   }
   private async probe(): Promise<void> {
     if (this.probing || !this.requireConsent()) return;
+    if (this.status.state !== 'connected') { this.message = '请先建立 VPN 连接'; return; }
+    const session = this.status.vpnSession;
     this.probing = true;
     const request = http.createHttp();
     this.request = request;
@@ -130,7 +138,9 @@ struct Index {
         usingCache: false,
         expectDataType: http.HttpDataType.STRING
       });
-      this.message = '当前网络 HTTPS 已响应：HTTP ' + response.responseCode.toString();
+      this.refresh();
+      this.message = this.status.state === 'connected' && this.status.vpnSession === session ?
+        '当前 VPN 的 HTTPS 已响应：HTTP ' + response.responseCode.toString() : '检查期间 VPN 发生变化，请重试';
       hilog.info(0x0001, 'HarmonyTether', 'HTTPS_PROBE code=%{public}d bytes=%{public}d', response.responseCode, String(response.result).length);
     } catch (error) {
       this.message = '联网检查失败，请检查电脑的网络连接';
@@ -152,6 +162,15 @@ struct Index {
             .fontSize(24).fontWeight(FontWeight.Medium).fontColor($r('sys.color.font_primary'))
           Text(this.status.message).fontSize(14).fontColor($r('sys.color.font_secondary'))
             .textAlign(TextAlign.Center).lineHeight(22)
+          if (this.status.state === 'connected') {
+            Text((this.status.effectiveIpv6 ? 'IPv4 + IPv6' : 'IPv4') + ' · ' +
+              (this.status.appMode === 'allow' ? '应用白名单' : this.status.appMode === 'deny' ? '应用黑名单' : '全局流量'))
+              .fontSize(12).fontColor($r('sys.color.font_secondary'))
+            if (this.status.relayProtocol && this.status.ipv6Policy !== 'inherit') {
+              Text('宿主机指定 IPv6 ' + (this.status.ipv6Policy === 'on' ? '开启' : '关闭'))
+                .fontSize(12).fontColor($r('sys.color.font_secondary'))
+            }
+          }
           Row({ space: 48 }) {
             Column({ space: 8 }) {
               Text('发送').fontSize(12).fontColor($r('sys.color.font_secondary'))
@@ -204,6 +223,12 @@ struct Index {
             selected: new SymbolGlyphModifier($r('sys.symbol.house_fill'))
           }, '主页'))
         TabContent() {
+          SettingsView({ addingApplications: $addingApplications })
+        }.tabBar(new BottomTabBarStyle({
+          normal: new SymbolGlyphModifier($r('sys.symbol.gearshape')),
+          selected: new SymbolGlyphModifier($r('sys.symbol.gearshape_fill'))
+        }, '设置'))
+        TabContent() {
           AboutView({
             onOpen: (topic: string) => this.navigationStack.pushPath({ name: 'Info', param: { topic: topic } as TopicParams }),
             onPrivacy: () => this.navigationStack.pushPath({ name: 'Privacy' })
@@ -213,9 +238,9 @@ struct Index {
           selected: new SymbolGlyphModifier($r('sys.symbol.info_circle_fill'))
         }, '关于'))
       }.scrollable(false).animationDuration(0).backgroundColor($r('sys.color.background_secondary'))
-        .onChange((index: number) => { this.selectedTab = index; })
+        .onChange((index: number) => { this.selectedTab = index; if (index !== 1) this.addingApplications = false; })
         .width('100%').height('100%')
-    }.title(this.selectedTab === 0 ? 'RevTether' : '关于', { backgroundColor: $r('sys.color.background_secondary') })
+    }.title(this.selectedTab === 0 ? 'RevTether' : this.selectedTab === 1 ? '设置' : '关于', { backgroundColor: $r('sys.color.background_secondary') })
       .titleMode(NavigationTitleMode.Mini).hideBackButton(true).mode(NavigationMode.Stack)
       .navDestination(this.destination)
       .onNavBarStateChange((visible: boolean) => {

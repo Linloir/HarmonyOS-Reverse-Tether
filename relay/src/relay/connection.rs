@@ -15,12 +15,11 @@
  */
 
 use std::fmt;
-use std::net::SocketAddrV4;
+use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 
 use super::client::ClientChannel;
-use super::ipv4_header::{Ipv4HeaderData, Protocol};
-use super::ipv4_packet::Ipv4Packet;
-use super::net;
+use super::ip_header::{IpHeaderData, Protocol};
+use super::ip_packet::IpPacket;
 use super::selector::Selector;
 use super::transport_header::TransportHeaderData;
 
@@ -33,7 +32,7 @@ pub trait Connection {
         &mut self,
         selector: &mut Selector,
         client_channel: &mut ClientChannel,
-        ipv4_packet: &Ipv4Packet,
+        ip_packet: &IpPacket,
     );
     fn close(&mut self, selector: &mut Selector);
     /// Called by the reaper when the flow has been idle for too long.
@@ -51,9 +50,9 @@ pub trait Connection {
 #[derive(Clone, Debug, Eq)]
 pub struct ConnectionId {
     protocol: Protocol,
-    source_ip: u32,
+    source_ip: IpAddr,
     source_port: u16,
-    destination_ip: u32,
+    destination_ip: IpAddr,
     destination_port: u16,
     id_string: String,
 }
@@ -80,20 +79,20 @@ impl std::hash::Hash for ConnectionId {
 
 impl ConnectionId {
     pub fn from_headers(
-        ipv4_header_data: &Ipv4HeaderData,
+        ip_header_data: &IpHeaderData,
         transport_header_data: &TransportHeaderData,
     ) -> Self {
-        let source_ip = ipv4_header_data.source();
+        let source_ip = ip_header_data.source();
         let source_port = transport_header_data.source_port();
-        let destination_ip = ipv4_header_data.destination();
+        let destination_ip = ip_header_data.destination();
         let destination_port = transport_header_data.destination_port();
         let id_string = format!(
             "{} -> {}",
-            net::to_socket_addr(source_ip, source_port),
-            net::to_socket_addr(destination_ip, destination_port)
+            SocketAddr::new(source_ip, source_port),
+            SocketAddr::new(destination_ip, destination_port)
         );
         Self {
-            protocol: ipv4_header_data.protocol(),
+            protocol: ip_header_data.protocol(),
             source_ip,
             source_port,
             destination_ip,
@@ -106,16 +105,16 @@ impl ConnectionId {
         self.protocol
     }
 
-    pub fn rewritten_destination(&self) -> SocketAddrV4 {
-        if self.destination_ip == crate::dns::VIRTUAL_DNS && self.destination_port == 53 {
+    pub fn rewritten_destination(&self) -> SocketAddr {
+        if crate::dns::is_virtual(self.destination_ip) && self.destination_port == 53 {
             return crate::dns::upstream();
         }
-        let ip = if self.destination_ip == LOCALHOST_FORWARD {
-            LOCALHOST
+        let ip = if self.destination_ip == IpAddr::V4(Ipv4Addr::from(LOCALHOST_FORWARD)) {
+            IpAddr::V4(Ipv4Addr::from(LOCALHOST))
         } else {
             self.destination_ip
         };
-        net::to_socket_addr(ip, self.destination_port)
+        SocketAddr::new(ip, self.destination_port)
     }
 }
 

@@ -35,7 +35,7 @@ with ThreadPoolExecutor(max_workers=8) as pool:
     count = sum(pool.map(handshake, range(40)))
 print(json.dumps({"test": "concurrent_handshakes", "passed": count, "expected": 40}), flush=True)
 
-bad_frames = [bytes([0x60, 0, 0, 20]), bytes([0x45, 0, 0, 0]), bytes([0x4f, 0, 0, 20]),
+bad_frames = [bytes([0x70, 0, 0, 20]), bytes([0x45, 0, 0, 0]), bytes([0x4f, 0, 0, 20]),
               bytes([0x45, 0, 0, 20, 0, 0, 0, 0, 64, 6]) + bytes(10)]
 for frame in bad_frames:
     with connect() as stream:

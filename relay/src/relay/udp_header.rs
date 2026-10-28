@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-use super::ipv4_header::Ipv4HeaderData;
+use super::ip_header::IpHeaderData;
 use byteorder::{BigEndian, ByteOrder};
 use std::mem;
 
@@ -149,9 +149,24 @@ impl<'a> UdpHeaderMut<'a> {
     }
 
     #[inline]
-    pub fn update_checksum(&mut self, _ipv4_header_data: &Ipv4HeaderData, _payload: &[u8]) {
-        // disable checksum validation
+    pub fn update_checksum(&mut self, ip_header_data: &IpHeaderData, payload: &[u8]) {
         self.set_checksum(0);
+        let length = UDP_HEADER_LENGTH as u16 + payload.len() as u16;
+        let mut sum = ip_header_data.pseudo_header_sum(17, length);
+        for word in self.raw.chunks_exact(2) {
+            sum += u32::from(BigEndian::read_u16(word));
+        }
+        for word in payload.chunks_exact(2) {
+            sum += u32::from(BigEndian::read_u16(word));
+        }
+        if payload.len() % 2 != 0 {
+            sum += u32::from(payload[payload.len() - 1]) << 8;
+        }
+        while sum > 0xffff {
+            sum = (sum & 0xffff) + (sum >> 16);
+        }
+        let checksum = !(sum as u16);
+        self.set_checksum(if checksum == 0 { 0xffff } else { checksum });
     }
 }
 

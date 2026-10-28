@@ -26,15 +26,14 @@ mod datagram;
 mod datagram_buffer;
 #[macro_use]
 mod interrupt;
-mod ipv4_header;
-mod ipv4_packet;
-mod ipv4_packet_buffer;
-mod net;
-mod root_listener;
+mod ip_header;
+mod ip_packet;
+mod ip_packet_buffer;
 mod packet_source;
 mod packetizer;
 #[allow(clippy::module_inception)] // relay.rs is in relay/
 mod relay;
+mod root_listener;
 mod router;
 mod selector;
 mod stream_buffer;
@@ -44,3 +43,6 @@ mod transport_header;
 mod tunnel_server;
 mod udp_connection;
 mod udp_header;
+
+#[cfg(test)]
+mod dual_stack_tests;

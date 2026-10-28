@@ -20,8 +20,8 @@ napi_value Error(napi_env env, const std::string &message) {
     return nullptr;
 }
 bool Args(napi_env env, napi_callback_info info, size_t required, int32_t *values) {
-    size_t count = 3;
-    napi_value args[3];
+    size_t count = 4;
+    napi_value args[4];
     if (napi_get_cb_info(env, info, &count, args, nullptr, nullptr) != napi_ok || count != required) {
         Error(env, "Invalid argument count"); return false;
     }
@@ -55,6 +55,7 @@ struct ConnectWork {
     int fd;
     uint16_t port;
     int error = 0;
+    uint32_t identifier = 0;
     ~ConnectWork() { close(fd); }
 };
 
@@ -72,12 +73,14 @@ napi_value Connect(napi_env env, napi_callback_info info) {
     napi_status created = napi_create_async_work(env, nullptr, name,
         [](napi_env, void *data) {
             auto *w = static_cast<ConnectWork *>(data);
-            w->error = tether::Connect(w->fd, w->port);
+            w->error = tether::Connect(w->fd, w->port, &w->identifier);
         },
         [](napi_env e, napi_status status, void *data) {
             auto *w = static_cast<ConnectWork *>(data);
             if (status == napi_ok && w->error == 0) {
-                napi_resolve_deferred(e, w->deferred, Undefined(e));
+                napi_value result;
+                napi_create_uint32(e, w->identifier, &result);
+                napi_resolve_deferred(e, w->deferred, result);
             } else {
                 napi_value message, error;
                 std::string text = "USB relay connection failed, errno=" + std::to_string(w->error);
@@ -98,10 +101,11 @@ napi_value Connect(napi_env env, napi_callback_info info) {
 
 napi_value Start(napi_env env, napi_callback_info info) {
     std::lock_guard<std::mutex> lock(sessionMutex);
-    int32_t values[3];
-    if (!Args(env, info, 3, values)) return nullptr;
+    int32_t values[4];
+    if (!Args(env, info, 4, values)) return nullptr;
     if (values[2] != currentSession) return Error(env, "Stale VPN session");
-    if (!tunnel.Start(values[0], values[1])) return Error(env, "Cannot start tunnel: " + tunnel.Status());
+    if (values[3] > 1) return Error(env, "Invalid IPv6 flag");
+    if (!tunnel.Start(values[0], values[1], values[3] == 1)) return Error(env, "Cannot start tunnel: " + tunnel.Status());
     return Undefined(env);
 }
 napi_value Stop(napi_env env, napi_callback_info info) {

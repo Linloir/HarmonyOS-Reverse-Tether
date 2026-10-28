@@ -1,7 +1,9 @@
 import { fileIo } from '@kit.CoreFileKit';
+import { writeTextAtomic } from './PersistentFile';
 
 export const VPN_ABILITY = 'TetherVpnAbility';
 export const PORT = 41417;
+export const CONTROL_PORT = 41420;
 
 export interface TunnelStats {
   state: string;
@@ -11,10 +13,24 @@ export interface TunnelStats {
   txPackets: number;
   rxPackets: number;
   dropped: number;
+  tunError?: boolean;
 }
 
 export class TetherState {
+  protocol_version: number = 2;
   port: number = PORT;
+  dns: string = '';
+  session: number = 0;
+  vpnSession: number = 0;
+  effectiveIpv6: boolean = false;
+  ipv6Policy: string = 'off';
+  relayProtocol: boolean = false;
+  appMode: string = 'all';
+  settingsRevision: number = 0;
+  lastError: string = '';
+  retryAt: number = 0;
+  connectedAt: number = 0;
+  controlReady: boolean = false;
   state: string = 'stopped';
   message: string = '连接 USB 后，点击连接';
   updatedAt: number = 0;
@@ -25,14 +41,7 @@ export class TetherState {
 
 export function saveState(dir: string, state: TetherState): void {
   state.updatedAt = Date.now();
-  const path = dir + '/tether-status.json';
-  const file = fileIo.openSync(path + '.tmp', fileIo.OpenMode.CREATE | fileIo.OpenMode.WRITE_ONLY | fileIo.OpenMode.TRUNC);
-  try {
-    fileIo.writeSync(file.fd, JSON.stringify(state));
-  } finally {
-    fileIo.closeSync(file);
-  }
-  fileIo.renameSync(path + '.tmp', path);
+  writeTextAtomic(dir + '/tether-status.json', JSON.stringify(state));
 }
 
 export function loadState(dir: string): TetherState {

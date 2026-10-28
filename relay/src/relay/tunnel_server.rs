@@ -33,16 +33,22 @@ pub struct TunnelServer {
     clients: Vec<Rc<RefCell<Client>>>,
     tcp_listener: TcpListener,
     next_client_id: u32,
+    ipv6: crate::policy::Ipv6Policy,
 }
 
 impl TunnelServer {
-    pub fn create(port: u16, selector: &mut Selector) -> io::Result<Rc<RefCell<Self>>> {
+    pub fn create(
+        port: u16,
+        ipv6: crate::policy::Ipv6Policy,
+        selector: &mut Selector,
+    ) -> io::Result<Rc<RefCell<Self>>> {
         let tcp_listener = Self::start_socket(port)?;
         let rc = Rc::new(RefCell::new(Self {
             self_weak: Weak::new(),
             clients: Vec::new(),
             tcp_listener,
             next_client_id: 0,
+            ipv6,
         }));
 
         // keep a shared reference to this
@@ -62,7 +68,9 @@ impl TunnelServer {
     }
 
     fn start_socket(port: u16) -> io::Result<TcpListener> {
-        if let Some(listener) = super::root_listener::inherited(port)? { return Ok(listener); }
+        if let Some(listener) = super::root_listener::inherited(port)? {
+            return Ok(listener);
+        }
         let localhost = Ipv4Addr::new(127, 0, 0, 1).into();
         let addr = SocketAddr::new(localhost, port);
         let server = TcpListener::bind(&addr)?;
@@ -70,23 +78,26 @@ impl TunnelServer {
     }
 
     fn on_ready(&mut self, selector: &mut Selector, _: Event) {
-      // Edge-triggered listeners must drain the accept queue; otherwise a
-      // simultaneous second USB client can wait indefinitely for its handshake.
-      loop {
-        match self.accept_client(selector) {
-            Ok(_) => debug!(target: TAG, "New client accepted"),
-            Err(ref err) if err.kind() == io::ErrorKind::WouldBlock => {
-                break;
+        // Edge-triggered listeners must drain the accept queue; otherwise a
+        // simultaneous second USB client can wait indefinitely for its handshake.
+        loop {
+            match self.accept_client(selector) {
+                Ok(_) => debug!(target: TAG, "New client accepted"),
+                Err(ref err) if err.kind() == io::ErrorKind::WouldBlock => {
+                    break;
+                }
+                Err(err) => {
+                    error!(target: TAG, "Cannot accept client: {}", err);
+                    break;
+                }
             }
-            Err(err) => { error!(target: TAG, "Cannot accept client: {}", err); break; },
         }
-      }
     }
 
     fn accept_client(&mut self, selector: &mut Selector) -> io::Result<()> {
         let (stream, _) = self.tcp_listener.accept()?;
         let client_id = self.next_client_id;
-        self.next_client_id += 1;
+        self.next_client_id = self.next_client_id.wrapping_add(1);
         let weak = self.self_weak.clone();
         let on_client_closed = Box::new(move |client: &Client| {
             if let Some(rc) = weak.upgrade() {
@@ -99,7 +110,7 @@ impl TunnelServer {
                 );
             }
         });
-        let client = Client::create(client_id, selector, stream, on_client_closed)?;
+        let client = Client::create(client_id, self.ipv6, selector, stream, on_client_closed)?;
         self.clients.push(client);
         info!(target: TAG, "Client #{} connected", client_id);
         Ok(())

@@ -1,41 +1,55 @@
-# 网络质量探测接口
+# 网络质量探测与后台控制
 
-这个接口用于从 HarmonyOS 应用进程中测量当前网络的 UDP 往返时间和丢包率。它不显示在主界面中，也不依赖 VPN：未启用 USB 网络时使用设备当前的系统网络；启用 USB 网络时使用系统路由选择的路径。调用不会启停 VPN。
+0.2.0 默认在已经运行的 `VpnExtensionAbility` 内探测，通过现有 VPN 测量 UDP 往返时间与丢包率。不会启动 Ability、切换前台、启停 VPN 或在失败时改用手机自身网络。未连接、未配对或客户端版本过旧时返回明确错误。
 
-## 调用
+## 配对与调用
 
-设备安装支持 `ProbeAbility` 的 App，并授权 HDC 后，可以使用配套脚本。0.1.4 起，设备使用者还需先打开 RevTether 并同意当前隐私政策；未同意时不会启动探测或本地结果服务，调用方无法取得探测结果，需先在手机上完成隐私选择。清除数据或政策版本更新后也需重新选择。
+首次需在手机同意当前隐私政策、授权并启动 VPN。控制令牌由电脑生成并保存在仅所有者可读的文件中；显式启动命令可以一并传入令牌。对于已有 VPN，可以显式配对一次，保持 VPN 连接：
 
 ```bash
+python3 scripts/harmony-tether.py pair --serial YOUR_DEVICE_SERIAL \
+  --token-file /private/revtether.token
 python3 scripts/network-probe.py --serial YOUR_DEVICE_SERIAL \
-  --stun stun.cloudflare.com:3478 --stun stun.l.google.com:19302
+  --token-file /private/revtether.token \
+  --stun stun.cloudflare.com:3478 --stun '[2001:db8::1]:3478'
 ```
 
-服务器必须由调用方提供。支持 1–4 个 IPv4 地址或域名及端口，每个目标发送 5 个 STUN Binding 请求。没有内置服务器或定时探测任务。
+示例 IPv6 为文档地址，实际使用须换成可达的 STUN 服务。支持 1–4 个 IPv4、IPv6 或域名目标；IPv6 带端口时使用方括号。没有内置服务器、定时探测或自动前台配对。每个目标发送 5 个 STUN Binding 请求，调用方应串行请求同一设备。
 
-脚本通过系统接口启动独立的 `ProbeAbility`，传入 JSON 请求；不启动 `EntryAbility` 或 VPN。该组件不加载应用页面，会请求短时后台执行并在完成后结束。冷启动时系统可能短暂显示应用启动窗口，具体取决于系统版本。即使 App 进程已退出、VPN 从未授权，也可以单独调用这个组件。
+`--hdc`、`--hdc-server` 和 `--bundle` 指定 HDC 程序、已有 server 和 App 包名。显式 server 使用 `-p`，不自行创建 HDC server；`--forward-host` 指定 HDC 本地转发绑定的地址。脚本只清理自己创建且仍匹配的精确转发，不强停 App。
+
+## 后台协议
+
+VPN 扩展在 `127.0.0.1:41420` 提供 HTTP 服务。经 `hdc fport tcp:LOCAL_PORT tcp:41420` 访问。`GET /v1/status` 返回不含令牌及应用列表的最小状态；所有其他请求需要 `Authorization: Bearer TOKEN`。服务只接受有界请求，不提供浏览器跨域授权，也不发重定向。令牌不应写入日志、共享目录或发布包。
+
+| 方法与路径 | 行为 |
+| --- | --- |
+| `GET /v1/status` | 当前状态、协议版本、会话、实际 IPv6 策略和流量计数 |
+| `POST /v1/probe` | 接受 UUID 和服务器列表；202 表示已接受，相同 UUID 在60秒结果缓存内幂等 |
+| `GET /v1/probe/UUID` | 202 处理中，200 已完成，404 未找到或已过期 |
+| `POST /v1/configure` | 接受 UUID 以及可选 `port` / `dns`，返回202后串行应用；不支持远程改应用名单 |
+| `POST /v1/stop` | 接受 UUID，返回202后停止当前 VPN 扩展 |
+
+400 表示参数无效，401 表示未配对或令牌不匹配，409 表示忙碌或 VPN 不可用，503 表示请求处理失败。configure / stop 返回202只证明请求已接受，后续执行结果必须通过状态核验；不能将202视为配置完成或已停止。自动恢复不通过前台界面规避这些失败。
+
+探测请求：
 
 ```json
 {
   "request_id": "8d754f6d-bd11-4bcc-80d6-ef41a7ed90b8",
-  "servers": [
-    {"host": "stun.cloudflare.com", "port": 3478},
-    {"host": "stun.l.google.com", "port": 19302}
-  ]
+  "servers": [{"host": "stun.cloudflare.com", "port": 3478}]
 }
 ```
 
-底层调用为 `hdc -t SERIAL shell aa start -b com.linloir.hrevtether -a ProbeAbility --ps request 'JSON'`。JSON 应作为一个经过正确 shell 引号处理的参数发送；每次调用生成新的随机 UUID。
-
-App 0.1.3 起，设备只在 `127.0.0.1:41418` 上提供结果。使用 `hdc fport tcp:LOCAL_PORT tcp:41418` 后，读取 `GET /v1/probe/REQUEST_ID`：处理中返回 HTTP 202，完成返回 HTTP 200；未知或过期 ID 返回 HTTP 404。0.1.2 使用 `31418`，配套脚本会根据已安装应用的 `versionCode` 自动选择。结果读取需要与启动时相同的请求 ID，不应将该 ID 发布或记录到共享日志。
-
-HDC 的 `-e` 选项可能将电脑端转发绑定到指定网卡地址；此时脚本使用 `--forward-host ADDRESS` 指定该地址。`--hdc`、`--hdc-server` 和 `--bundle` 分别指定 HDC 可执行文件、已有 HDC server 和派生 App 包名。该脚本需要 Python 3，不依赖电脑端 relay。
-
-## 结果与边界
+成功结果示例：
 
 ```json
 {
   "request_id": "8d754f6d-bd11-4bcc-80d6-ef41a7ed90b8",
+  "path": "vpn",
+  "vpn_session": 1793085000000,
+  "tx_bytes_delta": 240,
+  "rx_bytes_delta": 400,
   "value": {
     "protocol": "stun_binding_v1",
     "median_rtt_ms": 12.5,
@@ -50,12 +64,21 @@ HDC 的 `-e` 选项可能将电脑端转发绑定到指定网卡地址；此时�
 }
 ```
 
-以上为格式示例。实际 `results` 包含每个请求目标的独立 `value` 或 `error`；顶层 `value` 选择列表中第一个有回复的完整测量，不混合不同服务器的样本。如果完成的测量都没有回复，返回其中第一个完整测量：`received=0`、`packet_loss_percent=100`、`median_rtt_ms=null`。
+实际 `results` 包含各目标的独立测量或错误；顶层 `value` 选择第一个有回复的完整测量，不混合不同服务器样本。探测 socket 绑定 VPN 地址，RevTether 自身始终包含在 VPN 应用规则内。调用方验证请求 UUID、`path=vpn`、前后相同的有效 `vpn_session` 及 TUN 发送增量；VPN 会话变化或没有发送流量时拒绝结果。流量增量可能包含同期其他应用的数据，不能作为精确探测字节统计。
 
-域名解析失败、接口不可用、后台执行被系统拒绝、超时或本地套接字错误不会伪装成完整丢包样本。所有目标均发生执行错误时返回顶层 `error`，不提供 `value`。本接口不自动转为 HTTPS 测量。
+全部目标无回复且确实完成发送时，允许返回 `received=0`、`packet_loss_percent=100`、`median_rtt_ms=null`。域名解析、绑定、网络接口、控制鉴权和生命周期错误不能伪装成100%丢包；全部目标执行失败时返回 `error`，不提供 `value`。不自动转 HTTPS，也不回退到旧探测组件。
 
-请求间隔为 100 ms，最后一包发送后最多再等待 800 ms，不对同一个事务重传；RTT 使用系统单调时钟。回复必须匹配源地址、源端口、STUN 类型、magic cookie、事务 ID 和消息长度；重复回复不重复计数。结果仅反映测量期间到指定服务器的可达性，不能直接视为带宽、所有网站延迟或整条网络的长期丢包率。
+后台域名解析使用与本应用 TUN 接口及地址匹配的 VPN `NetHandle`，找不到时返回 `vpn_dns_unavailable`，不使用默认网络解析。测试设备 的底层 Wi-Fi 只有 IPv4 时，系统默认解析接口可能不查询 AAAA；本应用的显式 VPN 解析已在 IPv6 DNS 服务和 IPv6-only 域名上验证，但这不改变其他应用使用系统默认解析器的行为。
 
-调用方应串行请求同一设备。设备探测总时限为 16.5 秒，启动与结果保留的生命周期最多 20 秒；电脑端应设置略长的整体期限，并在结束时移除本次创建的精确转发。不要强制停止整个 App 进行清理，这会影响同时运行的 VPN。
+请求间隔100ms，最后一包发送后最多等待800ms，不重传同一个事务；RTT使用单调时钟。回复匹配源地址、源端口、消息类型、magic cookie、事务ID和长度，重复回复不重复计数。结果只反映本次到指定服务器的可达性，不代表带宽、所有网站的延迟或长期丢包率。
 
-数据处理说明见[隐私政策](PRIVACY.md)。
+## 显式兼容模式
+
+```bash
+python3 scripts/network-probe.py --serial YOUR_DEVICE_SERIAL --foreground \
+  --stun stun.cloudflare.com:3478
+```
+
+只有显式 `--foreground` 才调用旧 `ProbeAbility`。该模式不要求已有 VPN，也不能证明流量经过 VPN，系统可能显示启动窗口；不得用于承诺“不改变前台”的自动诊断。结果服务在手机回环端口41418，旧0.1.2为31418，由脚本按版本选择。仍要求同意隐私政策，完成后只结束探测组件，不停止整个 App。
+
+数据处理见[隐私政策](PRIVACY.md)，恢复与 IPv6 的传输细节见[协议说明](PROTOCOL.md)。

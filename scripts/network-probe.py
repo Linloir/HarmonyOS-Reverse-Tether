@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Measure network quality inside the device without enabling its VPN."""
+"""Measure the established VPN in the background, with an explicit legacy mode."""
 import argparse
 import ipaddress
 import json
@@ -35,34 +35,95 @@ def validate_value(value):
         raise RuntimeError('Invalid RTT')
 
 
+def parse_server(target):
+    host, separator, port = target.rpartition(':')
+    if not separator or not port.isdigit() or not 1 <= int(port) <= 65535:
+        raise ValueError('STUN server needs a host and port between 1 and 65535')
+    if host.startswith('[') and host.endswith(']'):
+        if '%' in host:
+            raise ValueError('Scoped IPv6 STUN addresses are not supported')
+        host = str(ipaddress.IPv6Address(host[1:-1]))
+    elif ':' in host:
+        raise ValueError('Enclose an IPv6 STUN address in brackets: [address]:port')
+    else:
+        if len(host) > 253 or not re.fullmatch(r'[A-Za-z0-9.-]+', host):
+            raise ValueError('Invalid STUN hostname')
+        if any(not label or len(label) > 63 or label.startswith('-') or label.endswith('-') for label in host.split('.')):
+            raise ValueError('Invalid STUN hostname')
+        if re.fullmatch(r'[0-9.]+', host):
+            host = str(ipaddress.IPv4Address(host))
+    return {'host': host, 'port': int(port)}
+
+
+def validate_vpn_reply(reply, request_id, session):
+    if reply.get('request_id') != request_id:
+        raise RuntimeError('Probe request ID mismatch')
+    if reply.get('error'):
+        error = reply['error']
+        safe = error if isinstance(error, str) and re.fullmatch(r'[a-z_]{1,80}', error) else 'measurement_failed'
+        raise RuntimeError('Device VPN probe failed: ' + safe)
+    if reply.get('path') != 'vpn' or reply.get('vpn_session') != session:
+        raise RuntimeError('The probe did not use the same established VPN session')
+    sent = reply.get('tx_bytes_delta')
+    received = reply.get('rx_bytes_delta')
+    if type(sent) is not int or sent <= 0 or type(received) is not int or received < 0:
+        raise RuntimeError('The probe has no valid VPN traffic evidence')
+    validate_value(reply.get('value'))
+
+
+def background_probe(args, servers, run, deadline):
+    from tether_control import ForwardedControl, read_token
+    token = read_token(args.token_file)
+    with ForwardedControl(run, args.serial, token, args.forward_host,
+                          cleanup_run=lambda *command: run(*command, cleanup=True)) as control:
+        _, status = control.request('GET', '/v1/status')
+        if status.get('protocol_version') != 2 or status.get('state') != 'connected':
+            raise RuntimeError('A connected RevTether 0.2.0 or newer VPN is required; no foreground action was taken')
+        session = status.get('vpnSession')
+        if type(session) is not int or session <= 0:
+            raise RuntimeError('VPN returned an invalid session')
+        request_id = str(uuid.uuid4())
+        _, response = control.request('POST', '/v1/probe', {'request_id': request_id, 'servers': servers})
+        if response.get('request_id') != request_id:
+            raise RuntimeError('VPN did not acknowledge the probe request ID')
+        while time.monotonic() < deadline:
+            code, reply = control.request('GET', '/v1/probe/' + request_id,
+                                          timeout=min(2, max(.1, deadline - time.monotonic())))
+            if reply.get('request_id') != request_id:
+                raise RuntimeError('Probe request ID mismatch')
+            if code == 200:
+                validate_vpn_reply(reply, request_id, session)
+                print(json.dumps(reply, ensure_ascii=False))
+                return
+            time.sleep(.15)
+        raise RuntimeError('VPN probe timed out')
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--serial', required=True, help='USB connect key shown by hdc list targets')
-    parser.add_argument('--stun', action='append', required=True, help='IPv4 or domain:port; repeat up to four times')
+    parser.add_argument('--stun', action='append', required=True, help='host:port or [IPv6]:port; repeat up to four times')
     parser.add_argument('--hdc', default=os.environ.get('HDC', 'hdc'))
     parser.add_argument('--hdc-server', help='Address of an existing HDC server')
     parser.add_argument('--forward-host', default='127.0.0.1', help='Address where HDC binds local forwards')
     parser.add_argument('--bundle', default='com.linloir.hrevtether')
+    parser.add_argument('--token-file', help='Private token used when pairing this computer with the VPN')
+    parser.add_argument('--foreground', action='store_true',
+                        help='Explicitly launch the legacy ProbeAbility; may change the foreground and does not prove VPN routing')
     args = parser.parse_args()
     if not re.fullmatch(r'[A-Za-z][A-Za-z0-9_]*(?:\.[A-Za-z][A-Za-z0-9_]*)+', args.bundle):
         parser.error('Invalid bundle name')
     if not 1 <= len(args.stun) <= 4:
         parser.error('Supply one to four STUN servers')
-    servers = []
-    for target in args.stun:
-        host, separator, port = target.rpartition(':')
-        if not separator or len(host) > 253 or not re.fullmatch(r'[A-Za-z0-9.-]+', host):
-            parser.error('STUN server must be an IPv4 address or domain followed by :port')
-        if any(not label or len(label) > 63 or label.startswith('-') or label.endswith('-') for label in host.split('.')):
-            parser.error('Invalid STUN hostname')
-        if re.fullmatch(r'[0-9.]+', host):
-            try:
-                ipaddress.IPv4Address(host)
-            except ValueError:
-                parser.error('Invalid STUN IPv4 address')
-        if not port.isdigit() or not 1 <= int(port) <= 65535:
-            parser.error('STUN port must be between 1 and 65535')
-        servers.append({'host': host, 'port': int(port)})
+    if not re.fullmatch(r'[A-Za-z0-9_-]+', args.serial):
+        parser.error('Invalid USB connect key')
+    if not args.foreground and not args.token_file:
+        parser.error('Background VPN probing requires --token-file; use pair to establish it')
+    try:
+        servers = [parse_server(target) for target in args.stun]
+        ipaddress.ip_address(args.forward_host)
+    except ValueError as error:
+        parser.error(str(error))
 
     hdc = [args.hdc]
     if args.hdc_server:
@@ -73,9 +134,13 @@ def main():
     def run(*command, cleanup=False):
         timeout = 2 if cleanup else min(5, max(.1, deadline - time.monotonic()))
         result = subprocess.run(hdc + list(command), capture_output=True, text=True, timeout=timeout)
-        if result.returncode:
+        if result.returncode or re.search(r'\[Fail\]|error:|failed to', result.stdout, re.I):
             raise RuntimeError('HDC command failed: ' + result.stderr.strip())
         return result.stdout
+
+    if not args.foreground:
+        background_probe(args, servers, run, deadline)
+        return
 
     mappings = [line.split() for line in run('fport', 'ls').splitlines()]
     used = {row[1] for row in mappings if len(row) == 4}

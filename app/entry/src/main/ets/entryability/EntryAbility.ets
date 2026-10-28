@@ -5,6 +5,7 @@ import { hilog } from '@kit.PerformanceAnalysisKit';
 import { VPN_ABILITY } from '../common/State';
 import { hasPrivacyConsent } from '../common/PrivacyConsent';
 import { rememberTetherRequest, tetherParameters, clearTetherRequest } from '../common/TetherRequest';
+import { ensureControlToken } from '../common/ControlAuth';
 
 export default class EntryAbility extends UIAbility {
   onCreate(want: Want): void { this.handleCommand(want); }
@@ -21,10 +22,17 @@ export default class EntryAbility extends UIAbility {
         hilog.info(0x0001, 'HarmonyTether', 'PRIVACY_REQUIRED open the app and read the policy before connecting');
         return;
       }
+      try { rememberTetherRequest(want, this.context.filesDir); }
+      catch (_) { hilog.error(0x0001, 'HarmonyTether', 'INVALID_HOST_REQUEST'); return; }
       vpnWant.parameters = tetherParameters();
       vpnExtension.startVpnExtensionAbility(vpnWant).catch((error: Error) => {
         hilog.error(0x0001, 'HarmonyTether', 'START_REQUEST_FAILED %{public}s', error.message);
       });
+    } else if (command === 'pair') {
+      const token = want.parameters?.controlToken;
+      if (typeof token !== 'string') return;
+      try { ensureControlToken(this.context.filesDir, token); }
+      catch (_) { hilog.error(0x0001, 'HarmonyTether', 'INVALID_PAIR_REQUEST'); }
     } else if (command === 'stop') {
       clearTetherRequest();
       vpnExtension.stopVpnExtensionAbility(vpnWant).catch((error: Error) => {

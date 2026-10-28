@@ -37,16 +37,17 @@ const STATS_INTERVAL_SECONDS: i64 = 5 * 60;
 
 pub struct Relay {
     port: u16,
+    ipv6: crate::policy::Ipv6Policy,
 }
 
 impl Relay {
-    pub fn new(port: u16) -> Self {
-        Self { port }
+    pub fn new(port: u16, ipv6: crate::policy::Ipv6Policy) -> Self {
+        Self { port, ipv6 }
     }
 
     pub fn run(&self) -> io::Result<()> {
         let mut selector = Selector::create().unwrap();
-        let tunnel_server = TunnelServer::create(self.port, &mut selector)?;
+        let tunnel_server = TunnelServer::create(self.port, self.ipv6, &mut selector)?;
         info!(target: TAG, "Relay server started");
         self.poll_loop(&mut selector, &tunnel_server)
     }

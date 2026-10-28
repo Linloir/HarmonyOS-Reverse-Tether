@@ -23,8 +23,8 @@ use std::rc::{Rc, Weak};
 use super::binary;
 use super::client::{Client, ClientChannel};
 use super::connection::{Connection, ConnectionId};
-use super::ipv4_header::Protocol;
-use super::ipv4_packet::Ipv4Packet;
+use super::ip_header::Protocol;
+use super::ip_packet::IpPacket;
 use super::selector::Selector;
 use super::tcp_connection::TcpConnection;
 use super::udp_connection::UdpConnection;
@@ -56,46 +56,49 @@ impl Router {
         &mut self,
         selector: &mut Selector,
         client_channel: &mut ClientChannel,
-        ipv4_packet: &Ipv4Packet,
+        ip_packet: &IpPacket,
     ) {
-        if !ipv4_packet.is_valid() {
+        if !ip_packet.is_valid() {
             warn!(target: TAG, "Dropping invalid packet");
             if log_enabled!(target: TAG, Level::Trace) {
                 trace!(
                     target: TAG,
                     "{}",
-                    binary::build_packet_string(ipv4_packet.raw())
+                    binary::build_packet_string(ip_packet.raw())
                 );
             }
             return;
         }
 
-        let (ipv4_header_data, transport_header_data) = ipv4_packet.headers_data();
+        let (ip_header_data, transport_header_data) = ip_packet.headers_data();
         let transport_header_data = transport_header_data.expect("No transport");
-        let id = ConnectionId::from_headers(ipv4_header_data, transport_header_data);
+        let id = ConnectionId::from_headers(ip_header_data, transport_header_data);
 
         let connection_rc = match self.connections.get(&id) {
             Some(rc) => rc.clone(),
-            None => match Self::create_connection(selector, id.clone(), self.client.clone(), ipv4_packet) {
-                Ok(rc) => {
-                    self.connections.insert(id.clone(), rc.clone());
-                    rc
+            None => {
+                match Self::create_connection(selector, id.clone(), self.client.clone(), ip_packet)
+                {
+                    Ok(rc) => {
+                        self.connections.insert(id.clone(), rc.clone());
+                        rc
+                    }
+                    Err(err) => {
+                        error!(
+                            target: TAG,
+                            "Cannot create route, dropping packet: {} (active connections: {})",
+                            err,
+                            self.connections.len()
+                        );
+                        return;
+                    }
                 }
-                Err(err) => {
-                    error!(
-                        target: TAG,
-                        "Cannot create route, dropping packet: {} (active connections: {})",
-                        err,
-                        self.connections.len()
-                    );
-                    return;
-                }
-            },
+            }
         };
 
         let closed = {
             let mut connection = connection_rc.borrow_mut();
-            connection.send_to_network(selector, client_channel, ipv4_packet);
+            connection.send_to_network(selector, client_channel, ip_packet);
             connection.is_closed()
         };
 
@@ -109,23 +112,23 @@ impl Router {
         selector: &mut Selector,
         id: ConnectionId,
         client: Weak<RefCell<Client>>,
-        ipv4_packet: &Ipv4Packet,
+        ip_packet: &IpPacket,
     ) -> io::Result<Rc<RefCell<dyn Connection>>> {
-        let (ipv4_header, transport_header) = ipv4_packet.headers();
+        let (ip_header, transport_header) = ip_packet.headers();
         let transport_header = transport_header.expect("No transport");
         match id.protocol() {
             Protocol::Tcp => Ok(TcpConnection::create(
                 selector,
                 id,
                 client,
-                ipv4_header,
+                ip_header,
                 transport_header,
             )?),
             Protocol::Udp => Ok(UdpConnection::create(
                 selector,
                 id,
                 client,
-                ipv4_header,
+                ip_header,
                 transport_header,
             )?),
             p => Err(io::Error::new(

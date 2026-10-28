@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-use super::ipv4_header::Ipv4HeaderData;
+use super::ip_header::IpHeaderData;
 use byteorder::{BigEndian, ByteOrder};
 use std::mem;
 
@@ -220,6 +220,35 @@ macro_rules! tcp_header_common {
 tcp_header_common!(TcpHeader, &'a [u8], &'a TcpHeaderData);
 tcp_header_common!(TcpHeaderMut, &'a mut [u8], &'a mut TcpHeaderData);
 
+impl<'a> TcpHeader<'a> {
+    pub fn maximum_segment_size(&self) -> Option<u16> {
+        let mut offset = 20;
+        while offset < self.raw.len() {
+            match self.raw[offset] {
+                0 => break,
+                1 => {
+                    offset += 1;
+                    continue;
+                }
+                _ => (),
+            }
+            if offset + 2 > self.raw.len() {
+                return None;
+            }
+            let size = usize::from(self.raw[offset + 1]);
+            if size < 2 || offset + size > self.raw.len() {
+                return None;
+            }
+            if self.raw[offset] == 2 && size == 4 {
+                let mss = BigEndian::read_u16(&self.raw[offset + 2..offset + 4]);
+                return if mss > 0 { Some(mss) } else { None };
+            }
+            offset += size;
+        }
+        None
+    }
+}
+
 // additional methods for the mutable version
 #[allow(dead_code)]
 impl<'a> TcpHeaderMut<'a> {
@@ -296,63 +325,33 @@ impl<'a> TcpHeaderMut<'a> {
         BigEndian::write_u16(&mut self.raw[16..18], checksum);
     }
 
-    pub fn update_checksum(&mut self, ipv4_header_data: &Ipv4HeaderData, payload: &[u8]) {
+    pub fn update_checksum(&mut self, ip_header_data: &IpHeaderData, payload: &[u8]) {
         // pseudo-header checksum (cf rfc793 section 3.1)
-        let source = ipv4_header_data.source();
-        let destination = ipv4_header_data.destination();
-        let transport_length =
-            ipv4_header_data.total_length() - u16::from(ipv4_header_data.header_length());
-
+        let transport_length = ip_header_data.total_length() - ip_header_data.header_length();
         let header_length = self.header_length();
         debug_assert!(header_length % 2 == 0 && header_length >= 20);
-
         let payload_length = transport_length - u16::from(header_length);
         debug_assert_eq!(
             payload_length as usize,
             payload.len(),
             "Payload length does not match"
         );
-
-        let mut sum = 6u32; // protocol: TCP = 6
-        sum += source >> 16;
-        sum += source & 0xFFFF;
-        sum += destination >> 16;
-        sum += destination & 0xFFFF;
-        sum += u32::from(transport_length);
+        let mut sum = ip_header_data.pseudo_header_sum(6, transport_length);
 
         // reset checksum field, so that it can be added with other bytes
         self.set_checksum(0);
 
-        // checksum computation is the most CPU-intensive task in gnirehtet
-        // prefer optimization over readability/safety
-
-        let mut hsum = 0; // high-order bytes sum
-
-        unsafe {
-            let mut p = self.raw.as_ptr();
-            let end = p.offset(header_length as isize);
-            while p < end {
-                hsum += u32::from(*p);
-                sum += u32::from(*p.offset(1));
-                p = p.offset(2);
-            }
-
-            let mut p = payload.as_ptr();
-            // -1 to ignore the last if payload_length is odd
-            let end = p.offset(payload_length as isize - 1);
-            while p < end {
-                hsum += u32::from(*p);
-                sum += u32::from(*p.offset(1));
-                p = p.offset(2);
-            }
-            if payload_length % 2 != 0 {
-                // if payload length is odd, the last byte is considered high-order
-                hsum += u32::from(*payload.get_unchecked((payload_length - 1) as usize));
-            }
+        // Fixed-size chunks compile to unaligned-safe loads and avoid creating
+        // an out-of-bounds pointer for an empty transport payload.
+        for word in self.raw.chunks_exact(2) {
+            sum += u32::from(BigEndian::read_u16(word));
         }
-
-        // add high-order bytes sum to the global sum
-        sum += hsum << 8;
+        for word in payload.chunks_exact(2) {
+            sum += u32::from(BigEndian::read_u16(word));
+        }
+        if payload_length % 2 != 0 {
+            sum += u32::from(payload[payload.len() - 1]) << 8;
+        }
 
         while (sum & !0xFFFF) != 0 {
             sum = (sum & 0xFFFF) + (sum >> 16);
@@ -364,7 +363,7 @@ impl<'a> TcpHeaderMut<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::relay::ipv4_packet::Ipv4Packet;
+    use crate::relay::ip_packet::IpPacket;
     use crate::relay::transport_header::TransportHeaderMut;
     use byteorder::{BigEndian, WriteBytesExt};
 
@@ -517,12 +516,12 @@ mod tests {
     #[test]
     fn compute_checksum() {
         let raw = &mut create_packet()[..];
-        let mut ipv4_packet = Ipv4Packet::parse(raw);
-        let (ipv4_header, mut transport) = ipv4_packet.split_mut();
+        let mut ip_packet = IpPacket::parse(raw);
+        let (ip_header, mut transport) = ip_packet.split_mut();
         if let Some((TransportHeaderMut::Tcp(ref mut tcp_header), ref payload)) = transport {
             // set a fake checksum value to assert that it is correctly computed
             tcp_header.set_checksum(0x79);
-            tcp_header.update_checksum(ipv4_header.data(), payload);
+            tcp_header.update_checksum(ip_header.data(), payload);
             let checksum = tcp_header.checksum();
 
             let expected_checksum = {
@@ -559,12 +558,12 @@ mod tests {
     #[test]
     fn compute_checksum_odd() {
         let raw = &mut create_odd_packet()[..];
-        let mut ipv4_packet = Ipv4Packet::parse(raw);
-        let (ipv4_header, mut transport) = ipv4_packet.split_mut();
+        let mut ip_packet = IpPacket::parse(raw);
+        let (ip_header, mut transport) = ip_packet.split_mut();
         if let Some((TransportHeaderMut::Tcp(ref mut tcp_header), ref payload)) = transport {
             // set a fake checksum value to assert that it is correctly computed
             tcp_header.set_checksum(0x79);
-            tcp_header.update_checksum(ipv4_header.data(), payload);
+            tcp_header.update_checksum(ip_header.data(), payload);
             let checksum = tcp_header.checksum();
 
             let expected_checksum = {
@@ -601,12 +600,12 @@ mod tests {
     #[test]
     fn compute_checksum_empty_payload() {
         let raw = &mut create_empty_packet()[..];
-        let mut ipv4_packet = Ipv4Packet::parse(raw);
-        let (ipv4_header, mut transport) = ipv4_packet.split_mut();
+        let mut ip_packet = IpPacket::parse(raw);
+        let (ip_header, mut transport) = ip_packet.split_mut();
         if let Some((TransportHeaderMut::Tcp(ref mut tcp_header), ref payload)) = transport {
             // set a fake checksum value to assert that it is correctly computed
             tcp_header.set_checksum(0x79);
-            tcp_header.update_checksum(ipv4_header.data(), payload);
+            tcp_header.update_checksum(ip_header.data(), payload);
             let checksum = tcp_header.checksum();
 
             let expected_checksum = {
@@ -675,13 +674,13 @@ mod tests {
     #[test]
     fn bench_checksum() {
         let raw = &mut create_long_packet()[..];
-        let mut ipv4_packet = Ipv4Packet::parse(raw);
-        let (ipv4_header, mut transport) = ipv4_packet.split_mut();
+        let mut ip_packet = IpPacket::parse(raw);
+        let (ip_header, mut transport) = ip_packet.split_mut();
         if let Some((TransportHeaderMut::Tcp(ref mut tcp_header), ref payload)) = transport {
             use std::time::Instant;
             let start = Instant::now();
             for _ in 0..5000000 {
-                tcp_header.update_checksum(ipv4_header.data(), payload);
+                tcp_header.update_checksum(ip_header.data(), payload);
             }
             let duration = start.elapsed();
             let ms = duration.as_secs() * 1000 + duration.subsec_nanos() as u64 / 1000000;

@@ -1,8 +1,22 @@
+# Build output and local test evidence (formal releases live outside this repo).
 /artifacts/*
 !/artifacts/.gitkeep
 /relay/target/
 /build/
+/builds/
+/dist/
+/bin/
+/docs/harmony-relay
 /assets/store/
+*.hap
+*.app
+*.o
+*.a
+*.so
+*.dll
+*.exe
+
+# HarmonyOS tooling and dependencies.
 **/node_modules/
 **/oh_modules/
 **/.hvigor/
@@ -10,13 +24,39 @@
 **/build/
 **/local.properties
 **/.idea/
+
+# Local signing identities and runtime credentials.
+/keystore/
+.env
+.env.*
+!.env.example
+*.token
 **/*.p12
+**/*.pfx
 **/*.p7b
 **/*.jks
 **/*.cer
+**/*.crt
 **/*.csr
 **/*.pem
 **/*.key
 **/signing.local.json
 **/*.local.json
+
+# Python caches, editor backups and temporary files.
 **/__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
+*.log
+*.tmp
+*.bak
+*.swp
+*.swo
+.DS_Store
+Thumbs.db

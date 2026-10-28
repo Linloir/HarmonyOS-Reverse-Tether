@@ -14,13 +14,18 @@
  * limitations under the License.
  */
 
-mod relay;
 pub mod dns;
+pub mod policy;
+mod relay;
 pub use crate::relay::byte_buffer;
 
 use crate::relay::Relay;
 use std::io;
 
 pub fn relay(port: u16) -> io::Result<()> {
-    Relay::new(port).run()
+    relay_with_policy(port, policy::Ipv6Policy::Inherit)
+}
+
+pub fn relay_with_policy(port: u16, ipv6: policy::Ipv6Policy) -> io::Result<()> {
+    Relay::new(port, ipv6).run()
 }

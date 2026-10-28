@@ -25,8 +25,8 @@ use std::rc::Rc;
 
 use super::binary;
 use super::close_listener::CloseListener;
-use super::ipv4_packet::{Ipv4Packet, MAX_PACKET_LENGTH};
-use super::ipv4_packet_buffer::Ipv4PacketBuffer;
+use super::ip_packet::{IpPacket, MAX_PACKET_LENGTH};
+use super::ip_packet_buffer::IpPacketBuffer;
 use super::packet_source::PacketSource;
 use super::router::Router;
 use super::selector::Selector;
@@ -36,10 +36,11 @@ const TAG: &str = "Client";
 
 pub struct Client {
     id: u32,
+    ipv6: crate::policy::Ipv6Policy,
     stream: TcpStream,
     interests: Ready,
     token: Token,
-    client_to_network: Ipv4PacketBuffer,
+    client_to_network: IpPacketBuffer,
     network_to_client: StreamBuffer,
     router: Router,
     close_listener: Box<dyn CloseListener<Client>>,
@@ -77,10 +78,10 @@ impl<'a> ClientChannel<'a> {
     pub fn send_to_client(
         &mut self,
         selector: &mut Selector,
-        ipv4_packet: &Ipv4Packet,
+        ip_packet: &IpPacket,
     ) -> io::Result<()> {
-        if ipv4_packet.length() as usize <= self.network_to_client.remaining() {
-            self.network_to_client.read_from(ipv4_packet.raw());
+        if ip_packet.length() as usize <= self.network_to_client.remaining() {
+            self.network_to_client.read_from(ip_packet.raw());
             self.update_interests(selector);
             Ok(())
         } else {
@@ -111,6 +112,7 @@ impl<'a> ClientChannel<'a> {
 impl Client {
     pub fn create(
         id: u32,
+        ipv6: crate::policy::Ipv6Policy,
         selector: &mut Selector,
         stream: TcpStream,
         close_listener: Box<dyn CloseListener<Client>>,
@@ -119,10 +121,11 @@ impl Client {
         let interests = Ready::writable();
         let rc = Rc::new(RefCell::new(Self {
             id,
+            ipv6,
             stream,
             interests,
             token: Token(0), // default value, will be set afterwards
-            client_to_network: Ipv4PacketBuffer::new(),
+            client_to_network: IpPacketBuffer::new(),
             network_to_client: StreamBuffer::new(16 * MAX_PACKET_LENGTH),
             router: Router::new(),
             closed: false,
@@ -155,7 +158,7 @@ impl Client {
         &mut self.router
     }
 
-    pub fn channel(&mut self) -> ClientChannel {
+    pub fn channel(&mut self) -> ClientChannel<'_> {
         ClientChannel::new(
             &mut self.network_to_client,
             &self.stream,
@@ -268,10 +271,10 @@ impl Client {
     pub fn send_to_client(
         &mut self,
         selector: &mut Selector,
-        ipv4_packet: &Ipv4Packet,
+        ip_packet: &IpPacket,
     ) -> io::Result<()> {
-        if ipv4_packet.length() as usize <= self.network_to_client.remaining() {
-            self.network_to_client.read_from(ipv4_packet.raw());
+        if ip_packet.length() as usize <= self.network_to_client.remaining() {
+            self.network_to_client.read_from(ip_packet.raw());
             self.update_interests(selector);
             Ok(())
         } else {
@@ -289,7 +292,7 @@ impl Client {
 
     fn send_id(&mut self) -> io::Result<()> {
         assert!(self.must_send_id());
-        let raw_id = binary::to_byte_array(self.id);
+        let raw_id = binary::to_byte_array(self.ipv6.wire_id(self.id));
         let w = self.stream.write(&raw_id[4 - self.pending_id_bytes..])?;
         self.pending_id_bytes -= w;
         Ok(())
@@ -320,11 +323,15 @@ impl Client {
             self.close(selector);
             return false;
         }
-        if self.client_to_network.is_fragmented() {
-            warn!(target: TAG, "Dropping unsupported fragmented IPv4 packet");
+        if self.client_to_network.is_unsupported() {
+            debug!(target: TAG, "Dropping unsupported IP protocol or fragmented packet");
             return true;
         }
-        match self.client_to_network.as_ipv4_packet() {
+        if !self.ipv6.permits_ipv6() && self.client_to_network.is_ipv6() {
+            debug!(target: TAG, "Dropping IPv6 packet disabled by host policy");
+            return true;
+        }
+        match self.client_to_network.as_ip_packet() {
             Some(ref packet) => {
                 let mut client_channel = ClientChannel::new(
                     &mut self.network_to_client,
@@ -347,10 +354,10 @@ impl Client {
             let consumed = {
                 let mut source = pending.borrow_mut();
                 let result = {
-                    let ipv4_packet = source
+                    let ip_packet = source
                         .get()
                         .expect("Unexpected pending source with no packet");
-                    self.send_to_client(selector, &ipv4_packet)
+                    self.send_to_client(selector, &ip_packet)
                 };
                 match result {
                     Ok(_) => {
@@ -392,7 +399,8 @@ impl Client {
             self.token,
             &mut self.interests,
         );
-        self.router.clean_expired_connections(selector, &mut channel);
+        self.router
+            .clean_expired_connections(selector, &mut channel);
     }
 
     pub fn log_stats(&self) {

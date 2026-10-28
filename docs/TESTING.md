@@ -25,10 +25,12 @@ STUN 数据包及测量结果的边界验证，使用 HarmonyOS SDK 自带的 Ar
 ```bash
 HARMONY_CLT_HOME=/path/to/command-line-tools node scripts/test-probe.cjs
 HARMONY_CLT_HOME=/path/to/command-line-tools node scripts/test-privacy.cjs
+HARMONY_CLT_HOME=/path/to/command-line-tools node scripts/test-client.cjs
+HARMONY_CLT_HOME=/path/to/command-line-tools node scripts/test-application-catalog.cjs
 python3 scripts/build-site.py --check
 ```
 
-独立探测还应在真机分别验证 VPN 开启、关闭、App 冷启动、无回复目标、DNS 错误以及请求结束后的转发清理。关闭 VPN 时确认探测前后均不存在 VPN 接口；开启 VPN 时确认数据包实际经过设备接口及电脑转发服务。不要将 HDC 请求成功等同于互联网请求成功。
+默认后台探测应在真机验证配对/未配对、VPN开启/关闭、无回复目标、DNS错误、会话中断以及精确转发清理。关闭 VPN 时必须明确失败且不拉起任何 Ability；开启时验证 TUN 收发、同一会话和前台窗口不变。显式 `--foreground` 兼容模式另行测试，不得替代后台验收。不要将 HDC 请求成功等同于互联网请求成功。
 
 ## 隐私与界面
 
@@ -36,7 +38,22 @@ python3 scripts/build-site.py --check
 
 检查主页和关于之间的导航、各详情页返回、底部内容滚动以及外部链接打开失败时的反馈。底部页签、标题栏和详情页返回应使用系统原生样式并避让安全区；首页仅保留连接状态、流量和操作，说明内容从关于进入。系统大字体或较窄窗口下，隐私选择按钮和导航仍需可操作。
 
+## 应用名单
+
+- 手动添加、移除、重复包名、无效包名、数量上限和自身应用排除。
+- 添加方式和 USB 列表分别以原生底部卡片打开；完成按钮固定在下方、提示文字在其上，键盘出现时仍可操作，关闭后返回上一层。
+- 打开设置或 USB 说明页不产生读取请求。只有点击读取才调用宿主机；退出取消，迟到回复被拒绝，45 秒超时结束等待。
+- 分别检查未连接、超时、读取失败和不支持的提示，以及名称/包名搜索、仅看已选、多选、刷新与取消。读取应用列表不得重建 VPN。
+
 ## 转发与 USB 通道
+
+无外网依赖的真实 socket 双栈集成测试：
+
+```bash
+python3 relay/tests/dual_stack_integration.py --binary ./build/harmony-relay
+```
+
+它使用回环 TCP、UDP、STUN、HTTP 和 DNS fixture，检查双向校验和、MSS/MTU、服务器 IPv6 开关以及不同上下游地址族的 A/AAAA 查询。独立的 `relay/tests/network_fixtures.py --serve-fixtures` 可用于真机受控端点验证；测试所需的临时地址由操作者单独配置和清理。
 
 `tests/packet_probe.cpp` 和 `tests/relay_integration.py` 可以检查握手、异常客户端隔离、DNS 和 HTTP。先编译探测程序并运行 relay：
 
@@ -82,5 +99,9 @@ python3 tests/browser_transfer_server.py --bind "$TEST_BIND_ADDRESS"
 - 终止测试实例拥有的 relay，确认控制工具报告退出；重新运行后验证实际联网。
 - 检查停止时不残留该实例创建的转发，其他设备和映射仍可使用。
 - 分别验证首次授权、取消授权、重复启停和锁屏场景。
+- relay 重启和精确 reverse 丢失时，记录 VPN 进程、TUN 接口及会话变化：传输会话可更新，健康 OS VPN/TUN 应保留。server IPv6 策略改变要求重建 TUN 时单独记录。
+- Pi-register 重启应接管已有 VPN，不先发送 stop；错误路径使用退避，未配对不偷偷打开前台。
+- 验证手机 IPv6 默认关闭，inherit 跟随手机开关，server on/off 覆盖手机开关；没有 IPv6 外网时只声明已验证的受控端点路径。
+- 对全局、白名单、黑名单分别用一个纳入和一个绕过的真实应用验证路由；RevTether 后台诊断始终走 VPN。保存后核查实际状态及设置持久化。
 
 保持测试记录最小化：描述版本、测试条件和结果即可。原始设备标识、网络拓扑、签名资料和未处理截图应保存在开发者自己的测试目录中。

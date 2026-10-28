@@ -19,7 +19,7 @@ use mio::net::UdpSocket;
 use mio::{Event, PollOpt, Ready, Token};
 use std::cell::RefCell;
 use std::io;
-use std::net::{Ipv4Addr, SocketAddr};
+use std::net::{Ipv4Addr, Ipv6Addr, SocketAddr};
 use std::rc::{Rc, Weak};
 use std::time::Instant;
 
@@ -27,8 +27,8 @@ use super::binary;
 use super::client::{Client, ClientChannel};
 use super::connection::{Connection, ConnectionId};
 use super::datagram_buffer::DatagramBuffer;
-use super::ipv4_header::Ipv4Header;
-use super::ipv4_packet::{Ipv4Packet, MAX_PACKET_LENGTH};
+use super::ip_header::IpHeader;
+use super::ip_packet::{IpPacket, MAX_PACKET_LENGTH};
 use super::packetizer::Packetizer;
 use super::selector::Selector;
 use super::transport_header::TransportHeader;
@@ -55,12 +55,12 @@ impl UdpConnection {
         selector: &mut Selector,
         id: ConnectionId,
         client: Weak<RefCell<Client>>,
-        ipv4_header: Ipv4Header,
+        ip_header: IpHeader,
         transport_header: TransportHeader,
     ) -> io::Result<Rc<RefCell<Self>>> {
         cx_info!(target: TAG, id, "Open");
         let socket = Self::create_socket(&id)?;
-        let packetizer = Packetizer::new(&ipv4_header, &transport_header);
+        let packetizer = Packetizer::new(&ip_header, &transport_header);
         let interests = Ready::readable();
         let rc = Rc::new(RefCell::new(Self {
             id,
@@ -89,9 +89,15 @@ impl UdpConnection {
     }
 
     fn create_socket(id: &ConnectionId) -> io::Result<UdpSocket> {
-        let autobind_addr = SocketAddr::new(Ipv4Addr::new(0, 0, 0, 0).into(), 0);
+        let destination = id.rewritten_destination();
+        let ip = if destination.is_ipv6() {
+            Ipv6Addr::UNSPECIFIED.into()
+        } else {
+            Ipv4Addr::UNSPECIFIED.into()
+        };
+        let autobind_addr = SocketAddr::new(ip, 0);
         let udp_socket = UdpSocket::bind(&autobind_addr)?;
-        udp_socket.connect(id.rewritten_destination().into())?;
+        udp_socket.connect(destination)?;
         Ok(udp_socket)
     }
 
@@ -200,25 +206,22 @@ impl UdpConnection {
     }
 
     fn read(&mut self, selector: &mut Selector) -> io::Result<()> {
-        let ipv4_packet = self.network_to_client.packetize(&mut self.socket)?;
+        let ip_packet = self.network_to_client.packetize(&mut self.socket)?;
         let client_rc = self.client.upgrade().expect("Expected client not found");
-        match client_rc
-            .borrow_mut()
-            .send_to_client(selector, &ipv4_packet)
-        {
+        match client_rc.borrow_mut().send_to_client(selector, &ip_packet) {
             Ok(_) => {
                 cx_debug!(
                     target: TAG,
                     self.id,
                     "Packet ({} bytes) sent to client",
-                    ipv4_packet.length()
+                    ip_packet.length()
                 );
                 if log_enabled!(target: TAG, Level::Trace) {
                     cx_trace!(
                         target: TAG,
                         self.id,
                         "{}",
-                        binary::build_packet_string(ipv4_packet.raw())
+                        binary::build_packet_string(ip_packet.raw())
                     );
                 }
             }
@@ -262,11 +265,11 @@ impl Connection for UdpConnection {
         &mut self,
         selector: &mut Selector,
         _: &mut ClientChannel,
-        ipv4_packet: &Ipv4Packet,
+        ip_packet: &IpPacket,
     ) {
         match self
             .client_to_network
-            .read_from(ipv4_packet.payload().expect("No payload"))
+            .read_from(ip_packet.payload().expect("No payload"))
         {
             Ok(_) => {
                 self.update_interests(selector);

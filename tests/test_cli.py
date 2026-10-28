@@ -56,7 +56,7 @@ else:
         result = self.run_cli('--hdc-server', '127.0.0.1:9876', '--bundle', 'org.example.custom')
         self.assertEqual(result.returncode, 0, result.stderr)
         commands = self.commands()
-        self.assertEqual(commands[0][:4], ['-s', '127.0.0.1:9876', '-t', 'USB-SERIAL'])
+        self.assertEqual(commands[0][:5], ['-p', '-s', '127.0.0.1:9876', '-t', 'USB-SERIAL'])
         self.assertEqual(commands[1][-1], 'aa start -b org.example.custom -a EntryAbility --ps command stop')
 
     def test_environment_bundle_selects_matching_application(self):

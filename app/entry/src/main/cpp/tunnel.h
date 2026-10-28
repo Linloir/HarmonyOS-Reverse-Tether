@@ -15,16 +15,18 @@ class Tunnel {
 public:
     ~Tunnel();
     // Duplicates both fds. Caller retains ownership of the originals.
-    bool Start(int tunFd, int socketFd);
+    bool Start(int tunFd, int socketFd, bool ipv6 = false);
     void Stop();
     std::string Status();
 private:
     void Run(int tunFd, int socketFd);
-    void Fail(int code);
+    void Fail(int code, bool tunError = false);
     std::thread worker_;
     std::atomic<bool> stopping_{false};
     std::atomic<bool> running_{false};
+    bool ipv6_{false};
     std::atomic<int> error_{0};
+    std::atomic<bool> tunError_{false};
     std::atomic<uint64_t> txBytes_{0}, rxBytes_{0}, txPackets_{0}, rxPackets_{0}, dropped_{0};
 };
 }

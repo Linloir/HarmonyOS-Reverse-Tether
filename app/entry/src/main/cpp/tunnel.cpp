@@ -14,7 +14,7 @@
 
 namespace tether {
 namespace {
-constexpr size_t MAX_PACKET = 65535;
+constexpr size_t MAX_PACKET = 65535 + 40;
 constexpr size_t MAX_QUEUE = 1024 * 1024;
 using Clock = std::chrono::steady_clock;
 struct Fd {
@@ -82,7 +82,7 @@ int Connect(int fd, uint16_t port, uint32_t *clientId, uint32_t address) {
 
 Tunnel::~Tunnel() { Stop(); }
 
-bool Tunnel::Start(int tunFd, int socketFd) {
+bool Tunnel::Start(int tunFd, int socketFd, bool ipv6) {
     Stop();
     int tun = dup(tunFd);
     int sock = dup(socketFd);
@@ -94,7 +94,9 @@ bool Tunnel::Start(int tunFd, int socketFd) {
         return false;
     }
     stopping_ = false;
+    ipv6_ = ipv6;
     error_ = 0;
+    tunError_ = false;
     txBytes_ = rxBytes_ = txPackets_ = rxPackets_ = dropped_ = 0;
     running_ = true;
     try {
@@ -113,14 +115,15 @@ void Tunnel::Stop() {
     running_ = false;
 }
 
-void Tunnel::Fail(int code) { error_ = code; }
+void Tunnel::Fail(int code, bool tunError) { tunError_ = tunError; error_ = code; }
 
 std::string Tunnel::Status() {
     std::ostringstream out;
     out << "{\"state\":\"" << (running_ ? "running" : error_ ? "error" : "idle")
         << "\",\"errno\":" << error_ << ",\"txBytes\":" << txBytes_
         << ",\"rxBytes\":" << rxBytes_ << ",\"txPackets\":" << txPackets_
-        << ",\"rxPackets\":" << rxPackets_ << ",\"dropped\":" << dropped_ << "}";
+        << ",\"rxPackets\":" << rxPackets_ << ",\"dropped\":" << dropped_
+        << ",\"tunError\":" << (tunError_ ? "true" : "false") << "}";
     return out.str();
 }
 
@@ -140,14 +143,19 @@ void Tunnel::Run(int tunFd, int socketFd) {
         if (n < 0 && errno == EINTR) continue;
         if (n < 0) { Fail(errno); break; }
         if (stopping_) break;
-        if ((fds[0].revents | fds[1].revents) & (POLLNVAL | POLLERR)) { Fail(EIO); break; }
+        if (fds[0].revents & (POLLNVAL | POLLERR)) { Fail(EIO, true); break; }
+        if (fds[1].revents & (POLLNVAL | POLLERR)) { Fail(EIO); break; }
         if (fds[0].revents & POLLIN) {
             ssize_t count = read(tun.value, buffer, sizeof(buffer));
             if (count > 0) {
                 size_t size = static_cast<size_t>(count);
-                size_t header = (buffer[0] & 0x0f) * 4;
-                if (size < 20 || buffer[0] >> 4 != 4 || header < 20 || header > size ||
-                    ((size_t(buffer[2]) << 8) | buffer[3]) != size) {
+                const unsigned version = buffer[0] >> 4;
+                const size_t header = version == 4 ? (buffer[0] & 0x0f) * 4 : 40;
+                const bool valid4 = version == 4 && size >= 20 && header >= 20 && header <= size &&
+                    ((size_t(buffer[2]) << 8) | buffer[3]) == size;
+                const bool valid6 = ipv6_ && version == 6 && size >= 40 &&
+                    40 + ((size_t(buffer[4]) << 8) | buffer[5]) == size;
+                if (!valid4 && !valid6) {
                     ++dropped_;
                 } else {
                     if (sendOffset) {
@@ -157,8 +165,8 @@ void Tunnel::Run(int tunFd, int socketFd) {
                     outbound.insert(outbound.end(), buffer, buffer + size);
                     ++txPackets_; txBytes_ += size;
                 }
-            } else if (count == 0) { Fail(ENODEV); break; }
-            else if (errno != EAGAIN && errno != EWOULDBLOCK && errno != EINTR) { Fail(errno); break; }
+            } else if (count == 0) { Fail(ENODEV, true); break; }
+            else if (errno != EAGAIN && errno != EWOULDBLOCK && errno != EINTR) { Fail(errno, true); break; }
         }
         if (fds[1].revents & POLLOUT) {
             ssize_t count = send(sock.value, outbound.data() + sendOffset, outbound.size() - sendOffset, MSG_NOSIGNAL);
@@ -175,9 +183,16 @@ void Tunnel::Run(int tunFd, int socketFd) {
             size_t offset = 0;
             while (incoming.size() - offset >= 4) {
                 const uint8_t *ip = incoming.data() + offset;
-                size_t header = (ip[0] & 0x0f) * 4;
-                size_t length = (size_t(ip[2]) << 8) | ip[3];
-                if (ip[0] >> 4 != 4 || header < 20 || length < header) { Fail(EPROTO); break; }
+                const unsigned version = ip[0] >> 4;
+                size_t length;
+                if (version == 4) {
+                    const size_t header = (ip[0] & 0x0f) * 4;
+                    length = (size_t(ip[2]) << 8) | ip[3];
+                    if (header < 20 || length < header) { Fail(EPROTO); break; }
+                } else if (version == 6 && ipv6_) {
+                    if (incoming.size() - offset < 6) break;
+                    length = 40 + ((size_t(ip[4]) << 8) | ip[5]);
+                } else { Fail(EPROTO); break; }
                 if (incoming.size() - offset < length) break;
                 packets.emplace_back(ip, ip + length);
                 queuedBytes += length;
@@ -192,10 +207,11 @@ void Tunnel::Run(int tunFd, int socketFd) {
             if (count == static_cast<ssize_t>(packet.size())) {
                 rxBytes_ += count; ++rxPackets_;
                 queuedBytes -= packet.size(); packets.pop_front();
-            } else if (count >= 0) { Fail(EIO); break; }
-            else if (errno != EAGAIN && errno != EWOULDBLOCK && errno != EINTR) { Fail(errno); break; }
+            } else if (count >= 0) { Fail(EIO, true); break; }
+            else if (errno != EAGAIN && errno != EWOULDBLOCK && errno != EINTR) { Fail(errno, true); break; }
         }
-        if ((fds[0].revents | fds[1].revents) & POLLHUP) { Fail(ECONNRESET); break; }
+        if (fds[0].revents & POLLHUP) { Fail(ENODEV, true); break; }
+        if (fds[1].revents & POLLHUP) { Fail(ECONNRESET); break; }
     }
     running_ = false;
 }

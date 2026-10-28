@@ -20,12 +20,14 @@ const io = {
   renameSync: (p, target) => { files.set(target, files.get(p)); files.delete(p); }
 };
 class Ability {
-  context = { filesDir: '/app', abilityInfo: { bundleName: 'com.linloir.hrevtether' },
+  context = { filesDir: '/app', abilityInfo: { bundleName: 'com.linloir.hrevtether' }, extensionAbilityInfo: {bundleName:'com.linloir.hrevtether'},
     terminateSelf: async () => {}, moveAbilityToBackground: async () => {} };
 }
 const modules = {
   '@kit.AbilityKit': { UIAbility: Ability },
   '@kit.CoreFileKit': { fileIo: io },
+  '@kit.BasicServicesKit': { systemDateTime: {} },
+  '@kit.CryptoArchitectureKit': { cryptoFramework: { createRandom: () => ({ generateRandomSync: n => ({data: new Uint8Array(n).fill(7)}) }) } },
   '@kit.PerformanceAnalysisKit': { hilog: { info() {}, error() {}, warn() {} } },
   '@kit.NetworkKit': {
     VpnExtensionAbility: Ability,
@@ -87,7 +89,7 @@ async function main() {
     probe.onCreate({ parameters: { request: '{}' } });
     probe.onNewWant({ parameters: { request: '{}' } });
   }
-  assert.deepEqual(calls, { vpn: 0, connection: 0, native: 0, probe: 0, listener: 0, background: 0, stop: 0 });
+  assert.deepEqual(calls, { vpn: 0, connection: 0, native: 0, probe: 0, listener: 0, background: 0, stop: 8 });
   files.clear();
   failWrite = true;
   assert.throws(() => acceptPrivacy('/app'), /EIO/);
@@ -111,7 +113,7 @@ async function main() {
   files.clear();
   new Entry().onCreate({ parameters: { command: 'stop' } });
   new Entry().onNewWant(request);
-  assert.equal(calls.stop, 1);
+  assert.equal(calls.stop, 9);
   assert.equal(calls.vpn, 1);
   assert.equal(hasPrivacyConsent('/app'), false);
   console.log('Privacy persistence, denied entry points, host parameters and post-consent actions: PASS');

@@ -58,7 +58,7 @@ rustup target add x86_64-pc-windows-gnu
 ./scripts/build-relay.sh x86_64-pc-windows-gnu
 ```
 
-输出为 `build/x86_64-pc-windows-gnu/harmony-relay.exe`。默认链接器为 `x86_64-w64-mingw32-gcc`，可通过 `CARGO_TARGET_X86_64_PC_WINDOWS_GNU_LINKER` 覆盖。Windows DNS 使用系统 `GetNetworkParams`；也可用 `--dns` 显式指定。
+输出为 `build/x86_64-pc-windows-gnu/harmony-relay.exe`。默认链接器为 `x86_64-w64-mingw32-gcc`，可通过 `CARGO_TARGET_X86_64_PC_WINDOWS_GNU_LINKER` 覆盖。Windows DNS 使用系统 `GetAdaptersAddresses` 读取双栈解析器；也可用 `--dns` 显式指定。
 
 ## 应用签名
 
@@ -110,7 +110,7 @@ python3 scripts/sign-hap.py --config /path/to/release-signing.local.json \
   --output build/harmony-reverse-tether-release.app
 ```
 
-`.app` 按 SDK 的标准流程签名整个分发容器，其中 HAP 的签名形态与独立签名的安装包不同；不要手工将已签名 HAP 填入 App Pack 后假定其签名会被打包工具保留。向应用市场提交 `.app`，独立安装和其他分发场景使用适合该渠道的 HAP。
+对于 `.app`，本仓库的签名脚本先签名并验证其中的 HAP，再签名并验证外层容器，同时检查提取的 Profile 与指定身份一致。不要只凭外层签名成功认定内层可安装。向应用市场提交 `.app`，独立安装和其他分发场景使用适合该渠道的 HAP；两者都需要按对应渠道验证。
 
 如需生成新的密钥和 CSR：
 
@@ -124,6 +124,8 @@ python3 scripts/prepare-signing.py /path/to/private/signing \
 
 ## 发布源码
 
+在维护者的 Pi 工作空间内，正式产物放在 `harmonyos-kits/builds/harmony-reverse-tether/<version>/`，保留模块和版本两级目录；签名材料统一保留在 `harmonyos-kits/keystore/`。正式包需包含 Windows amd64、Linux amd64、Linux arm64 的 relay，记录来源、版本、SHA-256 和各平台实际验证范围。先用开发签名完成指定设备测试，再使用既有 release 身份打包；交叉编译不能代替目标平台运行验证。
+
 从已经提交、检查过的版本导出源码：
 
 ```bash
@@ -133,6 +135,8 @@ git archive --format=tar --prefix=harmony-reverse-tether/ HEAD \
 ```
 
 归档只包含当前提交的文件，不包含 Git 历史、未跟踪的文件或被忽略的构建与签名资料。解压后可直接构建；如需建立新的公开仓库，可以在解压目录中初始化 Git。
+
+如果发布的是尚未提交的工作树，不能使用上述 `git archive HEAD` 冒充实际构建来源。应导出经过检查的源码清单，记录基准提交、工作树变更和逐文件校验和，排除签名资料、运行凭据、设备日志和构建目录。
 
 ## 实现参考
 
