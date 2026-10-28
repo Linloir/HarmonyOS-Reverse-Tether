@@ -1,8 +1,10 @@
 # 构建与签名
 
+当前源码版本：客户端 0.2.1（versionCode 7），relay 0.2.0。两者分别由 `app/AppScope/app.json5` 和 `relay/Cargo.toml` 声明；relay 依赖锁定文件为 `relay/Cargo.lock`。
+
 ## 工具链
 
-App 使用 HarmonyOS Command Line Tools、商业 HarmonyOS SDK API 18 Release 构建，最低兼容 API 12。已验证的工具链版本是 [Command Line Tools 5.1.0.840 Linux x64](https://repo.huaweicloud.com/harmonyos/ohpm/5.1.0/commandline-tools-linux-x64-5.1.0.840.zip)，配套 SDK 为 `5.1.0.125`。下载后可对照[官方 SHA-256](https://repo.huaweicloud.com/harmonyos/ohpm/5.1.0/commandline-tools-linux-x64-5.1.0.840.zip.sha256)校验。
+App 使用 HarmonyOS Command Line Tools、商业 HarmonyOS SDK API 18 Release 构建，配置中最低兼容 API 12。完整功能的真机测试范围见 [0.2.1 更新说明](releases/v0.2.1.md)，声明兼容版本不代表已逐版本验证。已验证的工具链版本是 [Command Line Tools 5.1.0.840 Linux x64](https://repo.huaweicloud.com/harmonyos/ohpm/5.1.0/commandline-tools-linux-x64-5.1.0.840.zip)，配套 SDK 为 `5.1.0.125`。下载后可对照[官方 SHA-256](https://repo.huaweicloud.com/harmonyos/ohpm/5.1.0/commandline-tools-linux-x64-5.1.0.840.zip.sha256)校验。
 
 电脑端 relay 使用 Rust stable 和 Cargo。App 构建脚本还需要 Python 3。
 
@@ -14,6 +16,8 @@ export HARMONY_CLT_HOME=/path/to/command-line-tools
 ```
 
 默认输出为 `build/harmony-reverse-tether-unsigned.hap`。构建在临时目录中完成，不改写源码中的应用身份，也不复用其他包名的构建状态。
+
+构建前运行 `python3 scripts/build-site.py --check`，确认隐私正文、应用内政策和网页政策一致。功能说明还需核对 `README.md`、`docs/README.md`、`HelpContent.ets` 和 `site/index.html`；它们不由构建脚本自动生成。
 
 发布时显式选择 release 模式，并同时生成用于应用市场的 App Pack：
 
@@ -59,6 +63,8 @@ rustup target add x86_64-pc-windows-gnu
 ```
 
 输出为 `build/x86_64-pc-windows-gnu/harmony-relay.exe`。默认链接器为 `x86_64-w64-mingw32-gcc`，可通过 `CARGO_TARGET_X86_64_PC_WINDOWS_GNU_LINKER` 覆盖。Windows DNS 使用系统 `GetAdaptersAddresses` 读取双栈解析器；也可用 `--dns` 显式指定。
+
+三平台构建目标分别是 `x86_64-unknown-linux-gnu`、`aarch64-unknown-linux-gnu` 和 `x86_64-pc-windows-gnu`。当前已构建的 Linux 发布产物要求 glibc 2.34 或更新版本；自行构建时，最低运行库版本取决于所用链接环境。Windows 交叉构建通过不等于 Windows 实机运行通过。
 
 ## 应用签名
 
@@ -125,6 +131,10 @@ python3 scripts/prepare-signing.py /path/to/private/signing \
 ## 发布源码
 
 在维护者的 Pi 工作空间内，正式产物放在 `harmonyos-kits/builds/harmony-reverse-tether/<version>/`，保留模块和版本两级目录；签名材料统一保留在 `harmonyos-kits/keystore/`。正式包需包含 Windows amd64、Linux amd64、Linux arm64 的 relay，记录来源、版本、SHA-256 和各平台实际验证范围。先用开发签名完成指定设备测试，再使用既有 release 身份打包；交叉编译不能代替目标平台运行验证。
+
+分发控制工具时应保留整个 `scripts/` 目录，至少包含 `harmony-tether.py`、`network-probe.py`、`tether_control.py` 和 `application_catalog.py`。只替换两个命令入口会遗漏后台控制和应用列表依赖。打包后从解压目录核对 `--help`，并按 [README](../README.md) 为预编译 relay 显式指定 `--relay` 路径。
+
+源码或应用内文案变化后，旧 HAP/APP 不会自动更新。后续包须重新构建并记录对应提交和校验和；保留旧正式包及其原验证记录，不以相同版本号暗示二进制完全一致。开发签名实测、release 验签、release 安装和商店审核应分别记录。
 
 从已经提交、检查过的版本导出源码：
 

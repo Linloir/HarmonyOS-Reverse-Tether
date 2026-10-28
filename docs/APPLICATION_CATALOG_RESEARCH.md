@@ -4,7 +4,7 @@
 
 ## 真机与签名
 
-在 测试设备 的 HUAWEI ADY-AL10 / HarmonyOS 6.0.1.115 上，以现有开发身份构建隔离探测包，声明普通 `ohos.permission.GET_BUNDLE_INFO`。开发与发布 Profile 均为 `normal` / `hos_normal_app`，ACL 为空。账号由用户确认为个人开发者账号。
+在测试设备 HUAWEI ADY-AL10 / HarmonyOS 6.0.1.115 上，以现有开发身份构建隔离探测包，声明普通 `ohos.permission.GET_BUNDLE_INFO`。开发与发布 Profile 均为 `normal` / `hos_normal_app`，ACL 为空。账号由用户确认为个人开发者账号。
 
 | 调用 | 结果 |
 | --- | --- |
@@ -31,8 +31,10 @@ API 18 / 20 的公开 `bundleManager` 未暴露全量枚举函数。API 18 的 `
 
 [ClashBox 的分享接收代码](https://github.com/xiaobaigroup/ClashBox/blob/master/entry/src/main/ets/entryability/EntryAbility.ets)调用 `systemShare.getSharedData`，从应用市场分享链接解析包名，并读取分享记录的 title / thumbnail。[访问控制页面](https://github.com/xiaobaigroup/ClashBox/blob/master/entry/src/main/ets/components/More/AccessControl/AccessControl.ets)维护本地记录并提供手动输入。其名称和缩略图不构成全量枚举权限可用的证据。
 
-另一个开源 VPN 的 HOME Want 查询样例使用 flags 4；本次已在 测试设备 对这组参数实测，仍为空，未直接采用其静态测试所声称的可用性。
+另一个开源 VPN 的 HOME Want 查询样例使用 flags 4；本次已在测试设备对这组参数实测，仍为空，未直接采用其静态测试所声称的可用性。
 
-## 本轮实现
+## 当前 0.2.1 实现
 
 黑白名单逐项添加、移除；默认手动输入一个包名。可选 USB 入口提供连接说明，仅在明确开始读取后通过已授权 HDC 获取名称和包名。请求可取消并在 45 秒过期，不后台常驻枚举，不把旧缓存当作新读取结果，不因导入失败变更 VPN。当前 `bm dump -a -l` 不提供真实应用图标；界面使用明确的通用应用标识，状态页提供 USB / 提示图标。
+
+正式应用只声明 `INTERNET` 和 `GET_NETWORK_INFO`，不保留探测使用的 `GET_BUNDLE_INFO`，也不申请上述受限权限。当前两种添加方式无需用户申请 ACL 或更换签名身份；USB 方式需要授权电脑调试、已建立供网和已配对的新版工具。操作步骤见 [README](../README.md#可选-usb-添加应用)，接口约定见[传输协议](PROTOCOL.md#optional-application-catalog-client-021)。

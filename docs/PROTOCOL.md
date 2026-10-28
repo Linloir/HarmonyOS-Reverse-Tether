@@ -1,5 +1,9 @@
 # RevTether tunnel protocol (0.2)
 
+Current implementation: client 0.2.1, relay 0.2.0. This tunnel handshake is
+separate from the local HTTP control API's `protocol_version: 2`; see
+[background control and diagnostics](NETWORK_PROBE.md).
+
 The HDC reverse mapping connects the phone to the relay's TCP listener on
 `127.0.0.1` (default port 31417). Each connection begins with a four-byte,
 big-endian identifier sent by the relay. Both directions then carry concatenated
@@ -145,4 +149,19 @@ Runtime acceptance for each target must be recorded separately.
 
 The UI creates a request only after an explicit USB import action. Manual entry and viewing settings do not create requests. Authenticated `GET /v1/applications/request` returns `{request: 0}` unless the UI has an uncompleted, uncanceled request younger than 45 seconds. An authorized host may then run `bm dump -a -l` and `POST /v1/applications` with `{request, applications: [{bundleName, label}]}`. Failure results use `applications: []` and `error: "read_failed" | "unsupported"`. No inventory is exposed by public status.
 
-The catalog endpoint alone allows a 128 KiB ASCII JSON body (escaped Unicode); all existing controls retain the 4 KiB body limit and headers are bounded to 8 KiB. Names, labels, count, duplicates and request freshness are validated before an atomic cache replacement. Canceled, expired and replaced requests return 409. Reading a catalog never configures, stops or restarts a VPN. Selection is a draft until the user saves settings.
+The request identifier is a positive millisecond timestamp created by the phone,
+not a UUID. The host validates its age against its own clock, so keep host and
+phone clocks synchronized. A successful POST returns `200 {"state":"saved"}`;
+this acknowledges the import result, not a change to VPN routing.
+
+The catalog endpoint alone allows a 128 KiB ASCII JSON body (escaped Unicode);
+all other controls retain the 4 KiB body limit and headers must be smaller than
+8 KiB. At most 1,000 entries are accepted; bundle names have a 255-character
+limit and labels a 128-character limit. Duplicate bundle names are collapsed.
+The phone validates request freshness before an atomic cache replacement.
+Canceled, expired, completed and replaced requests return 409; invalid catalog
+contents return 400. A catalog error must carry an empty application array.
+No real application icons are transferred. Reading a catalog never configures,
+stops or restarts a VPN. Selection remains a draft until the user saves settings,
+with a maximum of 63 user-selected packages. RevTether itself always uses the
+VPN and cannot be excluded.
